@@ -18,7 +18,7 @@ class Uniform(IActionSampler):
 class Choice(IActionSampler):
     def __call__(self, **kwargs) -> int:
         policy = get_data_by_key(POLICY, kwargs)
-        return np.random.choice(policy.shape[0], 1, False, p=policy.detach().numpy())[0]
+        return np.random.choice(policy.shape[0], 1, False, p=policy.detach().cpu().numpy())[0]
 
 
 class Argmax(IActionSampler):
@@ -30,4 +30,4 @@ class Argmax(IActionSampler):
 if __name__ == '__main__':
     from torch import Tensor
     for i in range(10):
-        print(Choice()(policy=Tensor([0.1, 0.5, 0.4])))
+        print(Choice()(policy=Tensor([0.1, 0.9])))

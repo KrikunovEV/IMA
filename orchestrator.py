@@ -20,6 +20,7 @@ class Orchestrator:
             metrics.append(ModelArt(f'{agent.agent_label}_model'))
             metrics.append(SumMetric(f'{agent.agent_label}_reward', epoch_counter=False))
             metrics.append(Metric(f'{agent.agent_label}_loss', epoch_counter=False))
+            metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
         self.logger.init(name, True, *metrics)
         self.logger.param(cfg.as_dict())
 
