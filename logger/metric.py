@@ -21,7 +21,7 @@ class IMetric:
         self._run_id = None
 
         self._key = key
-        self._fullname = None
+        self._fullname = self._key
         self._log_on_train = log_on_train
         self._log_on_eval = log_on_eval
         self._epoch_counter = epoch_counter
