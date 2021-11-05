@@ -1,5 +1,9 @@
-from logger import Metric, IArtifact
 import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sn
+import os
+
+from logger import Metric, IArtifact
 
 
 class SumMetric(Metric):
@@ -18,12 +22,39 @@ class SumMetric(Metric):
 
 class ActionMap(IArtifact):
 
-    def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True):
-        super(ActionMap, self).__init__(key, log_on_train, log_on_eval)
+    OFFEND: int = 0
+    DEFEND: int = 1
 
-    def on_log(self, data):
-        fig = plt.figure(figsize=(16, 9))
-        plt.close(fig)
+    def __init__(self, key: str, players: int, labels: list):
+        super(ActionMap, self).__init__(key)
+        self.players = players
+        self.labels = labels
+        self.OM = np.zeros((players, players), dtype=np.int)
+        self.DM = np.zeros((players, players), dtype=np.int)
+
+    def on_log(self, actions):
+        for row, action in enumerate(actions):
+            self.OM[row, action[self.OFFEND]] += 1
+            self.DM[row, action[self.DEFEND]] += 1
 
     def on_all(self):
         pass
+
+    def action_map(self, data):
+        fig, ax = plt.subplots(1, 2, figsize=(16, 9))
+        ax[0].set_title('offends heatmap')
+        ax[1].set_title('defends heatmap')
+        sn.heatmap(self.OM, cmap='Reds', xticklabels=self.labels, yticklabels=self.labels,
+                   ax=ax[0], square=True, cbar=False, annot=True, fmt='d')
+        sn.heatmap(self.DM, cmap='Blues', xticklabels=self.labels, yticklabels=self.labels,
+                   ax=ax[1], square=True, cbar=False, annot=True, fmt='d')
+        fig.tight_layout()
+
+        fullname = f'{self._fullname}_step{self._get_step()}.png'
+        plt.savefig(fullname)
+        plt.close(fig)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self._dest_dir)
+        os.remove(fullname)
+
+        self.OM = np.zeros((self.players, self.players), dtype=np.int)
+        self.DM = np.zeros((self.players, self.players), dtype=np.int)

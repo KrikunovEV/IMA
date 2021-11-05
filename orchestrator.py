@@ -2,7 +2,7 @@ import torch
 import multiprocessing as mp
 
 from logger import RunLogger, Metric, ModelArt
-from custom import SumMetric
+from custom import SumMetric, ActionMap
 from config import Config
 from agent import Agent
 
@@ -14,7 +14,7 @@ class Orchestrator:
         self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
 
         self.logger = RunLogger(queue)
-        metrics = []
+        metrics = [ActionMap('am', cfg.players, [agent.agent_label for agent in self.agents])]
         for agent in self.agents:
             agent.set_logger(self.logger)
             metrics.append(ModelArt(f'{agent.agent_label}_model'))
@@ -38,6 +38,7 @@ class Orchestrator:
     def act(self, obs):
         obs = torch.Tensor(obs).view(-1).unsqueeze(0).to(self.cfg.device)
         actions = [agent.act(obs) for agent in self.agents]
+        self.logger.log({'am': actions})
         return actions
 
     def rewarding(self, rewards):

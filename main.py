@@ -11,14 +11,14 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
+    start_time = time.time()
+
     seed = np.abs(name.__hash__()) % 4294967296  # 2**32
     cfg.set('seed', seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
-
-    start_time = time.time()
 
     env = OADEnv(players=cfg.players, debug=False)
     orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n), a_space=env.action_space.shape[0],
@@ -34,6 +34,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
             obs, rewards, _, _ = env.step(choices)
             orchestrator.rewarding(rewards)
         orchestrator.learn()
+        orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
 
@@ -46,10 +47,11 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
                 choices = orchestrator.act(obs)
                 obs, rewards, _, _ = env.step(choices)
                 orchestrator.rewarding(rewards)
+        orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
-    print(f'{name}: finished training in {time.time() - start_time} seconds')
+    orchestrator.logger.param({'spent time': time.time() - start_time})
 
 
 if __name__ == '__main__':
