@@ -10,6 +10,7 @@ class Config:
     epochs: int
     h_space: int
     # train
+    lr: float
     train_episodes: int
     eps_high: float
     eps_low: float
@@ -44,8 +45,9 @@ class Config:
             games=1,
             players=3,
             epochs=20,
-            h_space=2,
+            h_space=32,
             # train
+            lr=0.01,
             train_episodes=200,
             eps_high=0.5,
             eps_low=0.01,

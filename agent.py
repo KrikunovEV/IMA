@@ -21,7 +21,7 @@ class Agent:
         self.eps = cfg.eps_high
 
         self.model = Core(o_space=o_space, a_space=a_space, cfg=cfg).to(device=cfg.device)
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=0.0001)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=cfg.lr)
         self.loss = Reinforce(gamma=cfg.gamma)
         self.action_sampler_choice = Choice()
         self.action_sampler_uniform = Uniform()
@@ -56,7 +56,7 @@ class Agent:
                 if self.eps < self.cfg.eps_low:
                     self.eps = self.cfg.eps_low
 
-        return [a_action, d_action]
+        return [a_action, d_action], a_policy, d_policy
 
     def rewarding(self, reward):
         self.logger.log({f'{self.agent_label}_reward': reward})

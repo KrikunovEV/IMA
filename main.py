@@ -51,6 +51,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
+    orchestrator.logger.call('policy_via_time', None)
     orchestrator.logger.param({'spent time': time.time() - start_time})
 
 

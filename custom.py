@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sn
 import os
+import imageio
 
 from logger import Metric, IArtifact
 
@@ -58,3 +59,53 @@ class ActionMap(IArtifact):
 
         self.OM = np.zeros((self.players, self.players), dtype=np.int)
         self.DM = np.zeros((self.players, self.players), dtype=np.int)
+
+
+class PolicyViaTime(IArtifact):
+
+    def __init__(self, key: str, players: int, labels: list, log_on_eval: bool = False):
+        super(PolicyViaTime, self).__init__(key, log_on_eval=log_on_eval)
+        self.players = players
+        self.labels = labels
+        self.temp_dir = 'gif'
+        self.gif_name = os.path.join(self.temp_dir, f'{self._fullname}.gif')
+        os.makedirs(self.temp_dir, exist_ok=True)
+        self.filenames = []
+        self.frame = 0
+
+    def on_log(self, policies):
+        self.frame += 1
+        if self.frame % 8 == 0:
+            a_policies, d_policies = policies
+            n = len(self.labels)
+            fig, ax = plt.subplots(2, n, figsize=(16, 9), sharex=True, sharey=True)
+            for i in range(n):
+                ax[0][i].set_title(f'{self.labels[i]} agent\'s offend policy')
+                ax[1][i].set_title(f'{self.labels[i]} agent\'s defend policy')
+                ax[0][i].set_ylim(-0.01, 1.01)
+                ax[1][i].set_ylim(-0.01, 1.01)
+                ax[0][i].set_xticks([int(label) for label in self.labels])
+                ax[1][i].set_xticks([int(label) for label in self.labels])
+                colors = ['b' for _ in range(n)]
+                colors[np.argmax(a_policies[i])] = 'r'
+                ax[0][i].bar(np.arange(n) + 1, a_policies[i], color=colors)
+                colors = ['b' for _ in range(n)]
+                colors[np.argmax(d_policies[i])] = 'r'
+                ax[1][i].bar(np.arange(n) + 1, d_policies[i], color=colors)
+            fig.tight_layout()
+            self.filenames.append(os.path.join(self.temp_dir, f'{len(self.filenames)}.png'))
+            plt.savefig(self.filenames[-1])
+            plt.close(fig)
+
+    def on_all(self):
+        pass
+
+    def policy_via_time(self, data):
+        with imageio.get_writer(self.gif_name, mode='I') as writer:
+            for filename in self.filenames:
+                writer.append_data(imageio.imread(filename))
+                os.remove(filename)
+
+        self._logger.log_artifact(run_id=self._run_id, local_path=self.gif_name, artifact_path=self._dest_dir)
+        os.remove(self.gif_name)
+        os.rmdir(self.temp_dir)
