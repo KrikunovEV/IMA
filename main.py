@@ -52,6 +52,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
     orchestrator.logger.call('policy_via_time', None)
+    orchestrator.logger.call('coop_bars', None)
     orchestrator.logger.param({'spent time': time.time() - start_time})
 
 
@@ -64,7 +65,7 @@ if __name__ == '__main__':
     import dataclasses
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
         runners = []
-        lrs = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.0075]
+        lrs = [0.01, 0.005, 0.001, 0.0001]
 
         for lr in lrs:
             _config = dataclasses.replace(config)

@@ -2,7 +2,7 @@ import torch
 import multiprocessing as mp
 
 from logger import RunLogger, Metric, ModelArt
-from custom import SumMetric, ActionMap, PolicyViaTime
+from custom import SumMetric, ActionMap, PolicyViaTime, CoopsMetric
 from config import Config
 from agent import Agent
 
@@ -14,8 +14,9 @@ class Orchestrator:
         self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
 
         self.logger = RunLogger(queue)
-        metrics = [ActionMap('am', cfg.players, [agent.agent_label for agent in self.agents]),
-                   PolicyViaTime('pvt', cfg.players, [agent.agent_label for agent in self.agents])]
+        metrics = [  # ActionMap('acts', cfg.players, [agent.agent_label for agent in self.agents]),
+                   # PolicyViaTime('pvt', cfg.players, [agent.agent_label for agent in self.agents]),
+                   CoopsMetric('acts')]
         for agent in self.agents:
             agent.set_logger(self.logger)
             metrics.append(ModelArt(f'{agent.agent_label}_model'))
@@ -46,7 +47,7 @@ class Orchestrator:
             a_policies.append(ap.detach().cpu().numpy())
             d_policies.append(dp.detach().cpu().numpy())
 
-        self.logger.log({'am': actions, 'pvt': (actions, a_policies, d_policies)})
+        self.logger.log({'acts': actions, 'pvt': (a_policies, d_policies)})
         return actions
 
     def rewarding(self, rewards):

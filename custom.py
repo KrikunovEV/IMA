@@ -10,15 +10,71 @@ from logger import Metric, IArtifact
 class SumMetric(Metric):
     def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True, epoch_counter: bool = True):
         super(SumMetric, self).__init__(key, log_on_train, log_on_eval, epoch_counter)
-        self.sum = 0
+        self.sum_train = 0
+        self.sum_eval = 0
 
     # def set_mode(self, train: bool):
     #     self.sum = 0
     #     super(SumMetric, self).set_mode(train)
 
     def on_log(self, value):
-        self.sum += value
-        super(SumMetric, self).on_log(self.sum)
+        if self._train:
+            self.sum_train += value
+            _sum = self.sum_train
+        else:
+            self.sum_eval += value
+            _sum = self.sum_eval
+        super(SumMetric, self).on_log(_sum)
+
+
+class CoopsMetric(Metric):
+    def __init__(self, key: str):
+        super(CoopsMetric, self).__init__(key, True, True, False)
+        self.coops = []
+
+    def set_mode(self, train: bool):
+        if not train:
+            self.coops.append([0, 0, 0])
+        super(CoopsMetric, self).set_mode(train)
+
+    def on_log(self, actions):
+        value = 0
+        if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
+            value = 1  # 1&2vs3
+            if not self._train:
+                self.coops[-1][0] += 1
+        elif actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
+            value = 2  # 2&3vs1
+            if not self._train:
+                self.coops[-1][1] += 1
+        elif actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
+            value = 3  # 1&3vs2
+            if not self._train:
+                self.coops[-1][2] += 1
+        super(CoopsMetric, self).on_log(value)
+
+    def coop_bars(self, data):
+        epochs = np.arange(len(self.coops)) + 1
+        np_coops = np.array(self.coops)
+        fig, ax = plt.subplots(1, 3, figsize=(16, 9), sharey=True)
+        ax[0].set_title('1 2 vs 3')
+        ax[1].set_title('2 3 vs 1')
+        ax[2].set_title('1 3 vs 2')
+        for i in range(3):
+            ax[i].set_xlabel('epoch')
+            ax[i].set_ylabel('# of coops')
+            ax[i].set_ylim(-0.01, 100.01)
+            ax[i].bar(epochs, np_coops[:, i])
+            for e in epochs:
+                frac = np.round(np_coops[e - 1, i] / 100., 2)
+                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]} ({frac})',
+                           fontsize=6, ha='center', rotation=45.)
+        fig.tight_layout()
+        fullname = 'coops.png'
+        plt.savefig(fullname)
+        plt.close(fig)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        os.remove(fullname)
 
 
 class ActionMap(IArtifact):
@@ -67,29 +123,16 @@ class PolicyViaTime(IArtifact):
         super(PolicyViaTime, self).__init__(key, log_on_eval=log_on_eval)
         self.players = players
         self.labels = labels
-        self.temp_dir = f'{self._salt}_pvt'
+        self.temp_dir = os.path.join('temp', f'{self._salt}_pvt')
         os.makedirs(self.temp_dir, exist_ok=True)
         self.video_name = os.path.join(self.temp_dir, f'{self._fullname}.avi')
         self.filenames = []
         self.frame = 0
-        self.coops = []  # 0 - nothing, 1 - 1:2, 2 - 2:3, 3 - 1:3
 
     def on_log(self, data):
         self.frame += 1
         if self.frame % 50 == 0:
-            acts, a_policies, d_policies = data
-
-            # pairs
-            if acts[0][0] == acts[1][0] and acts[0][1] == acts[1][1]:
-                self.coops.append(1)
-            elif acts[1][0] == acts[2][0] and acts[1][1] == acts[2][1]:
-                self.coops.append(2)
-            elif acts[0][0] == acts[2][0] and acts[0][1] == acts[2][1]:
-                self.coops.append(3)
-            else:
-                self.coops.append(0)
-
-            # policies
+            a_policies, d_policies = data
             n = len(self.labels)
             fig, ax = plt.subplots(2, n, figsize=(16, 9), sharex=True, sharey=True)
             for i in range(n):
@@ -114,33 +157,10 @@ class PolicyViaTime(IArtifact):
         pass
 
     def policy_via_time(self, data):
-        writer = cv.VideoWriter(self.video_name, cv.VideoWriter_fourcc(*'DIVX'), 15, (1600, 900))
+        writer = cv.VideoWriter(self.video_name, cv.VideoWriter_fourcc(*'DIVX'), 2, (1600, 900))
 
-        # create a colored coop line
-        w = 10
-        coop_line = np.zeros((150, len(self.coops) * w, 3), dtype=np.uint8)
-        for i, coop in enumerate(self.coops):
-            s = i * w
-            e = s + w
-            if coop == 1:
-                coop_line[:, s:e] = np.array([255, 0, 0], dtype=np.uint8)
-            elif coop == 2:
-                coop_line[:, s:e] = np.array([0, 0, 255], dtype=np.uint8)
-            elif coop == 3:
-                coop_line[:, s:e] = np.array([0, 255, 0], dtype=np.uint8)
-
-        white_line = np.full((150, 1600, 3), 255, dtype=np.uint8)
-        white_line[:, :coop_line.shape[1]] = coop_line
-
-        # create video
         for i, filename in enumerate(self.filenames):
-            image = cv.imread(filename)
-            image = cv.resize(image, (1600, 750))
-            image = np.concatenate((image, white_line))
-            image[-200:-150, i * w: i * w + w] = np.array([0, 0, 0], dtype=np.uint8)
-
-            for _ in range(7):
-                writer.write(image)
+            writer.write(cv.imread(filename))
             os.remove(filename)
         writer.release()
 
