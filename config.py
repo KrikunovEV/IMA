@@ -42,7 +42,7 @@ class Config:
     def init():
         return Config(
             # common
-            games=1,
+            games=5,
             players=3,
             epochs=20,
             h_space=32,

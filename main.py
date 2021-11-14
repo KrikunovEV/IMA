@@ -61,8 +61,15 @@ if __name__ == '__main__':
     logger_server = LoggerServer()
     logger_server.start()
 
+    import dataclasses
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
-        runners = [executor.submit(env_runner, str(game), config, logger_server.queue) for game in range(config.games)]
+        runners = []
+        lrs = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.0075]
+
+        for lr in lrs:
+            _config = dataclasses.replace(config)
+            _config.set('lr', lr)
+            runners.append(executor.submit(env_runner, str(lr), _config, logger_server.queue))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:

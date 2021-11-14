@@ -46,7 +46,7 @@ class Orchestrator:
             a_policies.append(ap.detach().cpu().numpy())
             d_policies.append(dp.detach().cpu().numpy())
 
-        self.logger.log({'am': actions, 'pvt': (a_policies, d_policies)})
+        self.logger.log({'am': actions, 'pvt': (actions, a_policies, d_policies)})
         return actions
 
     def rewarding(self, rewards):
