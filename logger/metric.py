@@ -1,4 +1,5 @@
 import time
+import numpy as np
 from mlflow.entities import Metric as MLFlowMetric
 from mlflow.utils.validation import MAX_ENTITIES_PER_BATCH
 
@@ -19,6 +20,7 @@ class IMetric:
         self._train = None
         self._logger = None
         self._run_id = None
+        self._salt = np.random.randint(10000000)
 
         self._key = key
         self._fullname = self._key
