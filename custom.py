@@ -54,8 +54,56 @@ class CoopsMetric(IArtifact):
             ax[i].set_ylabel('# of coops')
             ax[i].set_ylim(-0.01, 100.01)
             ax[i].bar(epochs, np_coops[:, i])
-            ax[i].set_xticks(epochs)
-            for e in epochs:
+            ax[i].set_xticks(epochs[::5])
+            for e in epochs[::5]:
+                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
+        fig.tight_layout()
+        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
+        plt.savefig(fullname)
+        plt.close(fig)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        os.remove(fullname)
+
+
+class AvgCoopsMetric(IArtifact):
+    def __init__(self, key: str, repeats, epochs):
+        super(AvgCoopsMetric, self).__init__(key, '', False, True, False)
+        self.coops = []
+        self.repeats = repeats
+        self.epochs = epochs
+
+    def on_log(self, game_actions):
+        coops = []
+        for epoch_actions in game_actions:
+            coops.append([0, 0, 0])
+            for actions in epoch_actions:
+                if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
+                    coops[-1][0] += 1
+                elif actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
+                    coops[-1][1] += 1
+                elif actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
+                    coops[-1][2] += 1
+        self.coops.append(coops)
+
+    def avg_coop_bars(self, data):
+        avg_coops = np.zeros((self.epochs, 3), dtype=np.int64)
+        for coops in self.coops:
+            avg_coops += np.array(coops)
+        self.coops = avg_coops / self.repeats
+
+        epochs = np.arange(len(self.coops)) + 1
+        np_coops = np.array(self.coops)
+        fig, ax = plt.subplots(1, 3, figsize=(16, 9), sharey=True)
+        ax[0].set_title('1 2 vs 3')
+        ax[1].set_title('2 3 vs 1')
+        ax[2].set_title('1 3 vs 2')
+        for i in range(3):
+            ax[i].set_xlabel('epoch')
+            ax[i].set_ylabel('# of coops')
+            ax[i].set_ylim(-0.01, 100.01)
+            ax[i].bar(epochs, np_coops[:, i])
+            ax[i].set_xticks(epochs[::5])
+            for e in epochs[::5]:
                 ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
         fig.tight_layout()
         fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')

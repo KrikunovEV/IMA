@@ -49,7 +49,7 @@ class Config:
             h_space=32,
             # train
             lr=0.01,
-            train_episodes=200,
+            train_episodes=100,
             eps_high=0.5,
             eps_low=0.01,
             eps_episodes=1000,
