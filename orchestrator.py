@@ -16,7 +16,7 @@ class Orchestrator:
         self.logger = RunLogger(queue)
         metrics = [  # ActionMap('acts', cfg.players, [agent.agent_label for agent in self.agents]),
                    # PolicyViaTime('pvt', cfg.players, [agent.agent_label for agent in self.agents]),
-                   CoopsMetric('acts')
+                   CoopsMetric('acts', name)
         ]
         for agent in self.agents:
             agent.set_logger(self.logger)

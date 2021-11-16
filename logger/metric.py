@@ -1,5 +1,4 @@
 import time
-import numpy as np
 from mlflow.entities import Metric as MLFlowMetric
 from mlflow.utils.validation import MAX_ENTITIES_PER_BATCH
 
@@ -11,7 +10,8 @@ def get_time_ms():
 class IMetric:
     POSTFIX_EVAL = '_eval'
 
-    def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True, epoch_counter: bool = True):
+    def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
         if not log_on_eval and not log_on_train:
             raise Exception(f'Both log_on_train and log_on_eval can not be False')
 
@@ -20,13 +20,14 @@ class IMetric:
         self._train = None
         self._logger = None
         self._run_id = None
-        self._salt = np.random.randint(10000000)
 
         self._key = key
-        self._fullname = self._key
+        self._suffix_key = key if suffix == '' else f'{suffix}_{key}'
+        self._fullname = self._suffix_key
         self._log_on_train = log_on_train
         self._log_on_eval = log_on_eval
         self._epoch_counter = epoch_counter
+        self._is_global = is_global
         self._train_counter = 0
         self._eval_counter = 0
 
@@ -38,7 +39,7 @@ class IMetric:
         if self._train == train:
             return
         self._train = train
-        self._fullname = self._key
+        self._fullname = self._suffix_key
 
         if self._epoch_counter:
             if train:
@@ -67,6 +68,10 @@ class IMetric:
     def key(self):
         return self._key
 
+    @property
+    def is_global(self):
+        return self._is_global
+
     def on_log(self, value):
         raise NotImplementedError
 
@@ -76,8 +81,9 @@ class IMetric:
 
 class Metric(IMetric):
 
-    def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True, epoch_counter: bool = True):
-        super().__init__(key, log_on_train, log_on_eval, epoch_counter)
+    def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super().__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
 
     def on_log(self, value):
         self._logger.log_metric(run_id=self._run_id,
@@ -92,8 +98,9 @@ class Metric(IMetric):
 
 class BatchMetric(IMetric):
 
-    def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True, epoch_counter: bool = True):
-        super().__init__(key, log_on_train, log_on_eval, epoch_counter)
+    def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super().__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self._metrics = []
 
     def on_log(self, value):

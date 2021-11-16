@@ -55,6 +55,10 @@ def _mlflow_worker(message_queue: mp.Queue, experiment_name: str):
                 exp_id = logger.create_experiment(_exp_name)
                 break
 
+    # initialize global run
+    global_run_id = logger.create_run(exp_id, tags={MLFLOW_RUN_NAME: 'global'}).info.run_id
+    logger.set_tag(global_run_id, MLFLOW_RUN_NOTE, f'run_id: {global_run_id}')
+
     # other meta information
     instances = dict()
     terminated = RunStatus.to_string(RunStatus.FINISHED)
@@ -75,7 +79,10 @@ def _mlflow_worker(message_queue: mp.Queue, experiment_name: str):
                     run_id = logger.create_run(exp_id, tags={MLFLOW_RUN_NAME: data[0]}).info.run_id
                     logger.set_tag(run_id, MLFLOW_RUN_NOTE, f'run_id: {run_id}')
                     for metric in metrics:
-                        metric.set_mlflow(logger, run_id)
+                        if metric.is_global:
+                            metric.set_mlflow(logger, global_run_id)
+                        else:
+                            metric.set_mlflow(logger, run_id)
                     instances[instance] = dict(run_id=run_id, metrics=metrics)
                 else:
                     raise Exception(f'Logger: .{CMD.INIT}() has to input at least one \'metric\'.')
@@ -111,6 +118,7 @@ def _mlflow_worker(message_queue: mp.Queue, experiment_name: str):
             logger.log_artifacts(run_id=instances[instance]['run_id'], local_dir=data[0], artifact_path=data[1])
         elif cmd == CMD.STOP:
             # data: None
+            logger.set_terminated(global_run_id, terminated)
             break
         elif cmd == CMD.DEINIT:
             # data: None

@@ -28,6 +28,7 @@ class Config:
     def __post_init__(self):
         self.set('device', torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         self.set('eps_step', (self.eps_high - self.eps_low) / self.eps_episodes)
+        self.set('cores', 3)
 
     def set(self, param: str, value):
         if param in self.__annotations__.keys():
@@ -44,7 +45,7 @@ class Config:
             # common
             games=5,
             players=3,
-            epochs=20,
+            epochs=50,
             h_space=32,
             # train
             lr=0.01,

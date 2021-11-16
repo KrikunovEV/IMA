@@ -8,14 +8,11 @@ from logger import Metric, IArtifact
 
 
 class SumMetric(Metric):
-    def __init__(self, key: str, log_on_train: bool = True, log_on_eval: bool = True, epoch_counter: bool = True):
-        super(SumMetric, self).__init__(key, log_on_train, log_on_eval, epoch_counter)
+    def __init__(self, key: str, suffix: str = 'sum', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super(SumMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self.sum_train = 0
         self.sum_eval = 0
-
-    # def set_mode(self, train: bool):
-    #     self.sum = 0
-    #     super(SumMetric, self).set_mode(train)
 
     def on_log(self, value):
         if self._train:
@@ -28,19 +25,14 @@ class SumMetric(Metric):
 
 
 class CoopsMetric(IArtifact):
-    def __init__(self, key: str):
-        super(CoopsMetric, self).__init__(key, False, True)
+    def __init__(self, key: str, suffix: str):
+        super(CoopsMetric, self).__init__(key, suffix, False, True, True)
         self.coops = []
-        self.tmp_dir = os.path.join('temp', f'{self._salt}_coops')
-        os.makedirs(self.tmp_dir, exist_ok=True)
 
     def set_mode(self, train: bool):
+        super(CoopsMetric, self).set_mode(train)
         if not train:
             self.coops.append([0, 0, 0])
-        super(CoopsMetric, self).set_mode(train)
-
-    def on_all(self):
-        pass
 
     def on_log(self, actions):
         if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
@@ -62,19 +54,18 @@ class CoopsMetric(IArtifact):
             ax[i].set_ylabel('# of coops')
             ax[i].set_ylim(-0.01, 100.01)
             ax[i].bar(epochs, np_coops[:, i])
+            ax[i].set_xticks(epochs)
             for e in epochs:
                 ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
         fig.tight_layout()
-        fullname = os.path.join(self.tmp_dir, 'coops.png')
+        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
         plt.savefig(fullname)
         plt.close(fig)
         self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
         os.remove(fullname)
-        os.rmdir(self.tmp_dir)
 
 
 class ActionMap(IArtifact):
-
     OFFEND: int = 0
     DEFEND: int = 1
 
@@ -90,9 +81,6 @@ class ActionMap(IArtifact):
             self.OM[row, action[self.OFFEND]] += 1
             self.DM[row, action[self.DEFEND]] += 1
 
-    def on_all(self):
-        pass
-
     def action_map(self, data):
         fig, ax = plt.subplots(1, 2, figsize=(16, 9))
         ax[0].set_title('offends heatmap')
@@ -103,7 +91,7 @@ class ActionMap(IArtifact):
                    ax=ax[1], square=True, cbar=False, annot=True, fmt='d')
         fig.tight_layout()
 
-        fullname = f'{self._fullname}_step{self._get_step()}.png'
+        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_step{self._get_step()}.png')
         plt.savefig(fullname)
         plt.close(fig)
         self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self._dest_dir)
@@ -115,13 +103,10 @@ class ActionMap(IArtifact):
 
 class PolicyViaTime(IArtifact):
 
-    def __init__(self, key: str, players: int, labels: list, log_on_eval: bool = False):
-        super(PolicyViaTime, self).__init__(key, log_on_eval=log_on_eval)
+    def __init__(self, key: str, players: int, labels: list):
+        super(PolicyViaTime, self).__init__(key, log_on_eval=False)
         self.players = players
         self.labels = labels
-        self.temp_dir = os.path.join('temp', f'{self._salt}_pvt')
-        os.makedirs(self.temp_dir, exist_ok=True)
-        self.video_name = os.path.join(self.temp_dir, f'{self._fullname}.avi')
         self.filenames = []
         self.frame = 0
 
@@ -145,21 +130,19 @@ class PolicyViaTime(IArtifact):
                 colors[np.argmax(d_policies[i])] = 'r'
                 ax[1][i].bar(np.arange(n) + 1, d_policies[i], color=colors)
             fig.tight_layout()
-            self.filenames.append(os.path.join(self.temp_dir, f'{len(self.filenames)}.png'))
-            plt.savefig(self.filenames[-1])
+            fullname = os.path.join(self._tmp_dir, f'{self._salt}_{len(self.filenames)}.png')
+            self.filenames.append(fullname)
+            plt.savefig(fullname)
             plt.close(fig)
 
-    def on_all(self):
-        pass
-
     def policy_via_time(self, data):
-        writer = cv.VideoWriter(self.video_name, cv.VideoWriter_fourcc(*'DIVX'), 2, (1600, 900))
+        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}.avi')
+        writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, (1600, 900))
 
         for i, filename in enumerate(self.filenames):
             writer.write(cv.imread(filename))
             os.remove(filename)
         writer.release()
 
-        self._logger.log_artifact(run_id=self._run_id, local_path=self.video_name, artifact_path=self._dest_dir)
-        os.remove(self.video_name)
-        os.rmdir(self.temp_dir)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self._dest_dir)
+        os.remove(fullname)

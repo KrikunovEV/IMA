@@ -2,6 +2,7 @@ from orchestrator import Orchestrator
 from envs import OADEnv
 from config import Config
 from logger import LoggerServer
+from custom import CoopsMetric
 
 import time
 import numpy as np
@@ -59,21 +60,24 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
 if __name__ == '__main__':
     config = Config.init()
 
+    import dataclasses
+    _configs = []
+    _names = []
+    for lr in [0.005, 0.001]:
+        for h_space in [64, 128, 256]:
+            _config = dataclasses.replace(config)
+            _config.set('lr', lr)
+            _config.set('h_space', h_space)
+            _configs.append(_config)
+            _names.append(f'{lr}_{h_space}')
+
     logger_server = LoggerServer()
     logger_server.start()
 
-    import dataclasses
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
         runners = []
-        lrs = [0.01, 0.005, 0.001, 0.0001]
-        h_spaces = [16, 32, 64, 128]
-
-        for lr in lrs:
-            for h_space in h_spaces:
-                _config = dataclasses.replace(config)
-                _config.set('lr', lr)
-                _config.set('h_space', h_space)
-                runners.append(executor.submit(env_runner, f'{lr}_{h_space}', _config, logger_server.queue))
+        for _name, _config in zip(_names, _configs):
+            runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:
@@ -81,6 +85,6 @@ if __name__ == '__main__':
             except Exception as ex:
                 raise ex
 
-            print(f'Games finished: {counter + 1}/{len(lrs)}')
+            print(f'Games finished: {counter + 1}/{len(_configs)}')
 
     logger_server.stop()
