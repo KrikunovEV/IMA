@@ -16,13 +16,14 @@ class Orchestrator:
         self.logger = RunLogger(queue)
         metrics = [  # ActionMap('acts', cfg.players, [agent.agent_label for agent in self.agents]),
                    # PolicyViaTime('pvt', cfg.players, [agent.agent_label for agent in self.agents]),
-                   CoopsMetric('acts')]
+                   CoopsMetric('acts')
+        ]
         for agent in self.agents:
             agent.set_logger(self.logger)
-            metrics.append(ModelArt(f'{agent.agent_label}_model'))
-            metrics.append(SumMetric(f'{agent.agent_label}_reward', epoch_counter=False))
-            metrics.append(Metric(f'{agent.agent_label}_loss', epoch_counter=False))
-            metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
+            # metrics.append(ModelArt(f'{agent.agent_label}_model'))
+            # metrics.append(SumMetric(f'{agent.agent_label}_reward', epoch_counter=False))
+            # metrics.append(Metric(f'{agent.agent_label}_loss', epoch_counter=False))
+            # metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
         self.logger.init(name, True, *metrics)
         self.logger.param(cfg.as_dict())
 

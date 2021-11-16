@@ -27,31 +27,28 @@ class SumMetric(Metric):
         super(SumMetric, self).on_log(_sum)
 
 
-class CoopsMetric(Metric):
+class CoopsMetric(IArtifact):
     def __init__(self, key: str):
-        super(CoopsMetric, self).__init__(key, True, True, False)
+        super(CoopsMetric, self).__init__(key, False, True)
         self.coops = []
+        self.tmp_dir = os.path.join('temp', f'{self._salt}_coops')
+        os.makedirs(self.tmp_dir, exist_ok=True)
 
     def set_mode(self, train: bool):
         if not train:
             self.coops.append([0, 0, 0])
         super(CoopsMetric, self).set_mode(train)
 
+    def on_all(self):
+        pass
+
     def on_log(self, actions):
-        value = 0
         if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
-            value = 1  # 1&2vs3
-            if not self._train:
-                self.coops[-1][0] += 1
+            self.coops[-1][0] += 1
         elif actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
-            value = 2  # 2&3vs1
-            if not self._train:
-                self.coops[-1][1] += 1
+            self.coops[-1][1] += 1
         elif actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
-            value = 3  # 1&3vs2
-            if not self._train:
-                self.coops[-1][2] += 1
-        super(CoopsMetric, self).on_log(value)
+            self.coops[-1][2] += 1
 
     def coop_bars(self, data):
         epochs = np.arange(len(self.coops)) + 1
@@ -66,15 +63,14 @@ class CoopsMetric(Metric):
             ax[i].set_ylim(-0.01, 100.01)
             ax[i].bar(epochs, np_coops[:, i])
             for e in epochs:
-                frac = np.round(np_coops[e - 1, i] / 100., 2)
-                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]} ({frac})',
-                           fontsize=6, ha='center', rotation=45.)
+                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
         fig.tight_layout()
-        fullname = 'coops.png'
+        fullname = os.path.join(self.tmp_dir, 'coops.png')
         plt.savefig(fullname)
         plt.close(fig)
         self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
         os.remove(fullname)
+        os.rmdir(self.tmp_dir)
 
 
 class ActionMap(IArtifact):

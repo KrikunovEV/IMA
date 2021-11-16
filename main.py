@@ -66,11 +66,14 @@ if __name__ == '__main__':
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
         runners = []
         lrs = [0.01, 0.005, 0.001, 0.0001]
+        h_spaces = [16, 32, 64, 128]
 
         for lr in lrs:
-            _config = dataclasses.replace(config)
-            _config.set('lr', lr)
-            runners.append(executor.submit(env_runner, str(lr), _config, logger_server.queue))
+            for h_space in h_spaces:
+                _config = dataclasses.replace(config)
+                _config.set('lr', lr)
+                _config.set('h_space', h_space)
+                runners.append(executor.submit(env_runner, f'{lr}_{h_space}', _config, logger_server.queue))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:
@@ -78,6 +81,6 @@ if __name__ == '__main__':
             except Exception as ex:
                 raise ex
 
-            print(f'Games finished: {counter + 1}/{config.games}')
+            print(f'Games finished: {counter + 1}/{len(lrs)}')
 
     logger_server.stop()
