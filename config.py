@@ -7,8 +7,11 @@ class Config:
     # common
     games: int
     players: int
+    neg_players: int
     epochs: int
     h_space: int
+    n_space: int
+    dk: int
     # train
     lr: float
     train_episodes: int
@@ -45,8 +48,11 @@ class Config:
             # common
             games=5,
             players=3,
+            neg_players=2,
             epochs=50,
             h_space=32,
+            n_space=32,
+            dk=64,
             # train
             lr=0.01,
             train_episodes=100,

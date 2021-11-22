@@ -12,6 +12,7 @@ class Orchestrator:
     def __init__(self, o_space: int, a_space: int, cfg: Config, queue: mp.Queue, name: str):
         self.cfg = cfg
         self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
+        self.m = dict()
 
         self.logger = RunLogger(queue)
         metrics = [  # ActionMap('acts', cfg.players, [agent.agent_label for agent in self.agents]),
@@ -39,11 +40,31 @@ class Orchestrator:
         for agent in self.agents:
             agent.reset_memory()
 
+    def negotiation(self):
+        q_all = dict()
+        for agent in self.agents:
+            for key, value in agent.message().items():
+                q_all[key] = value
+
+        self.m = dict()
+        for a_id, value in q_all.items():
+            my_q = value
+            q = []
+            for a_id2, value2 in q_all.items():
+                if a_id == a_id2:
+                    continue
+                q.append(value2.detach())
+            a_id = int(a_id)
+            self.m[a_id] = self.agents[a_id].negotiate(my_q, torch.stack(q))
+
     def act(self, obs):
         obs = torch.Tensor(obs).view(-1).unsqueeze(0).to(self.cfg.device)
         actions, a_policies, d_policies = [], [], []
         for agent in self.agents:
-            acts, ap, dp = agent.act(obs)
+            m = None
+            if agent.id in self.m:
+                m = self.m[agent.id]
+            acts, ap, dp = agent.act(obs, m)
             actions.append(acts)
             a_policies.append(ap.detach().cpu().numpy())
             d_policies.append(dp.detach().cpu().numpy())

@@ -33,6 +33,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         obs = env.reset()
         orchestrator.reset_memory()
         for episode in range(cfg.train_episodes):
+            orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards, _, _ = env.step(choices)
             orchestrator.rewarding(rewards)
@@ -48,6 +49,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
+                orchestrator.negotiation()
                 choices = orchestrator.act(obs)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards, _, _ = env.step(choices)
@@ -68,9 +70,9 @@ if __name__ == '__main__':
     import dataclasses
     _configs = []
     _names = []
-    repeats = 200
-    for lr in [0.001]:
-        for h_space in [128]:
+    repeats = 9
+    for lr in [0.001, 0.005, 0.0001, 0.0005]:
+        for h_space in [64, 128, 256]:
             _config = dataclasses.replace(config)
             _config.set('lr', lr)
             _config.set('h_space', h_space)
@@ -87,10 +89,10 @@ if __name__ == '__main__':
 
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
         runners = []
-        for repeat in range(repeats):
-            for _name, _config in zip(_names, _configs):
-                _name = f'r{repeat}_{_name}'
-                runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
+        # for repeat in range(repeats):
+        for _name, _config in zip(_names, _configs):
+            # _name = f'r{i}_{_name}'
+            runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:
