@@ -27,6 +27,11 @@ class Core(nn.Module):
             nn.Linear(cfg.h_space, a_space),
         )
 
+        self.value = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(cfg.h_space, 1)
+        )
+
     def forward(self, o, m=None):
         if self.negotiable:
             if m is None:
@@ -35,7 +40,8 @@ class Core(nn.Module):
         self.h = self.rnn(o, self.h)
         a_logits = self.o_policy(self.h)
         d_logits = self.d_policy(self.h)
-        return a_logits.squeeze(), d_logits.squeeze()
+        v = self.value(self.h)
+        return a_logits.squeeze(), d_logits.squeeze(), v.squeeze()
 
     def reset(self):
         self.h = torch.zeros((1, self.cfg.h_space), device=self.cfg.device)

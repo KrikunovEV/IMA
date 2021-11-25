@@ -10,7 +10,6 @@ class Config:
     neg_players: int
     epochs: int
     h_space: int
-    n_space: int
     dk: int
     # train
     lr: float
@@ -31,7 +30,7 @@ class Config:
     def __post_init__(self):
         self.set('device', torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         self.set('eps_step', (self.eps_high - self.eps_low) / self.eps_episodes)
-        self.set('cores', 3)
+        self.set('cores', 2)
 
     def set(self, param: str, value):
         if param in self.__annotations__.keys():
@@ -46,19 +45,18 @@ class Config:
     def init():
         return Config(
             # common
-            games=5,
+            games=1,
             players=3,
             neg_players=2,
-            epochs=50,
+            epochs=80,
             h_space=32,
-            n_space=32,
             dk=64,
             # train
             lr=0.01,
             train_episodes=100,
             eps_high=0.5,
             eps_low=0.01,
-            eps_episodes=1000,
+            eps_episodes=5000,
             gamma=0.99,
             # test
             test_episodes=100

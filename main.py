@@ -70,9 +70,9 @@ if __name__ == '__main__':
     import dataclasses
     _configs = []
     _names = []
-    repeats = 9
-    for lr in [0.001, 0.005, 0.0001, 0.0005]:
-        for h_space in [64, 128, 256]:
+    repeats = config.games
+    for lr in [0.0001]:
+        for h_space in [128]:
             _config = dataclasses.replace(config)
             _config.set('lr', lr)
             _config.set('h_space', h_space)
@@ -89,10 +89,10 @@ if __name__ == '__main__':
 
     with ProcessPoolExecutor(max_workers=config.cores) as executor:
         runners = []
-        # for repeat in range(repeats):
-        for _name, _config in zip(_names, _configs):
-            # _name = f'r{i}_{_name}'
-            runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
+        for repeat in range(repeats):
+            for _name, _config in zip(_names, _configs):
+                _name = f'r{repeat}_{_name}'
+                runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:

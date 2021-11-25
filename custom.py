@@ -4,13 +4,13 @@ import seaborn as sn
 import os
 import cv2 as cv
 
-from logger import Metric, IArtifact
+from logger import Metric, BatchMetric, IArtifact
 
 
-class SumMetric(Metric):
+class BatchSumMetric(BatchMetric):
     def __init__(self, key: str, suffix: str = 'sum', log_on_train: bool = True, log_on_eval: bool = True,
                  epoch_counter: bool = True, is_global: bool = False):
-        super(SumMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
+        super(BatchSumMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self.sum_train = 0
         self.sum_eval = 0
 
@@ -21,7 +21,62 @@ class SumMetric(Metric):
         else:
             self.sum_eval += value
             _sum = self.sum_eval
-        super(SumMetric, self).on_log(_sum)
+        super(BatchSumMetric, self).on_log(_sum)
+
+
+class BatchAvgMetric(BatchMetric):
+    def __init__(self, key: str, avg: int, suffix: str = 'avg', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super(BatchAvgMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
+        self.values = []
+        self.avg = avg
+
+    def on_log(self, value):
+        self.values.append(value)
+        if len(self.values) == self.avg:
+            self.on_all()
+
+    def on_all(self):
+        if len(self.values) > 0:
+            super(BatchAvgMetric, self).on_log(np.mean(self.values))
+            super(BatchAvgMetric, self).on_all()
+            self.values = []
+
+
+class BatchSumAvgMetric(BatchMetric):
+    def __init__(self, key: str, avg: int, suffix: str = 'sum_avg', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super(BatchSumAvgMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
+        self.values = []
+        self.sum_train = 0
+        self.sum_eval = 0
+        self.avg = avg
+
+    def on_log(self, value):
+        self.values.append(value)
+        if len(self.values) == self.avg:
+            mean_value = np.mean(self.values)
+            if self._train:
+                self.sum_train += mean_value
+                _sum = self.sum_train
+            else:
+                self.sum_eval += mean_value
+                _sum = self.sum_eval
+            super(BatchSumAvgMetric, self).on_log(_sum)
+            self.values = []
+
+    def on_all(self):
+        if len(self.values) > 0:
+            mean_value = np.mean(self.values)
+            if self._train:
+                self.sum_train += mean_value
+                _sum = self.sum_train
+            else:
+                self.sum_eval += mean_value
+                _sum = self.sum_eval
+            super(BatchSumAvgMetric, self).on_log(_sum)
+            self.values = []
+        super(BatchSumAvgMetric, self).on_all()
 
 
 class CoopsMetric(IArtifact):
@@ -91,7 +146,7 @@ class AvgCoopsMetric(IArtifact):
             avg_coops += np.array(coops)
         self.coops = avg_coops / self.repeats
 
-        epochs = np.arange(len(self.coops)) + 1
+        epochs = np.arange(len(self.coops))
         np_coops = np.array(self.coops)
         fig, ax = plt.subplots(1, 3, figsize=(16, 9), sharey=True)
         ax[0].set_title('1 2 vs 3')
@@ -101,10 +156,12 @@ class AvgCoopsMetric(IArtifact):
             ax[i].set_xlabel('epoch')
             ax[i].set_ylabel('# of coops')
             ax[i].set_ylim(-0.01, 100.01)
-            ax[i].bar(epochs, np_coops[:, i])
-            ax[i].set_xticks(epochs[::5])
-            for e in epochs[::5]:
-                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
+            ax[i].bar(epochs + 1, np_coops[:, i])
+            ax[i].set_xticks(epochs[::10] + 1)
+            for j in range(len(epochs[::10])):
+                text = (epochs[::10] + 1)[j]
+                mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
+                ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
         fig.tight_layout()
         fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
         plt.savefig(fullname)
@@ -169,8 +226,8 @@ class PolicyViaTime(IArtifact):
                 ax[1][i].set_title(f'{self.labels[i]} agent\'s defend policy')
                 ax[0][i].set_ylim(-0.01, 1.01)
                 ax[1][i].set_ylim(-0.01, 1.01)
-                ax[0][i].set_xticks([int(label) for label in self.labels])
-                ax[1][i].set_xticks([int(label) for label in self.labels])
+                ax[0][i].set_xticks([int(label[0]) for label in self.labels], self.labels)
+                ax[1][i].set_xticks([int(label[0]) for label in self.labels], self.labels)
                 colors = ['b' for _ in range(n)]
                 colors[np.argmax(a_policies[i])] = 'r'
                 ax[0][i].bar(np.arange(n) + 1, a_policies[i], color=colors)

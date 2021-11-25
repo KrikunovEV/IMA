@@ -5,7 +5,7 @@ import numpy as np
 
 from model import Core, Negotiation
 from config import Config
-from rl import Reinforce, Choice, Uniform
+from rl import Reinforce, A2C, Choice, Uniform
 from logger import RunLogger
 
 
@@ -19,14 +19,15 @@ class Agent:
         self.label = f'{id + 1}' + ('n' if self.negotiable else '')
         self.train = None
         self.log_p = None
+        self.v = None
         self.eps = cfg.eps_high
 
         if self.negotiable:
             self.model = Negotiation(o_space=o_space, a_space=a_space, cfg=cfg).to(device=cfg.device)
         else:
             self.model = Core(o_space=o_space, a_space=a_space, cfg=cfg).to(device=cfg.device)
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=cfg.lr)
-        self.loss = Reinforce(gamma=cfg.gamma)
+        self.optimizer = optim.RMSprop(params=self.model.parameters(), lr=cfg.lr)
+        self.loss = A2C(gamma=cfg.gamma)
         self.act_choice = Choice()
         self.act_uniform = Uniform()
 
@@ -51,7 +52,7 @@ class Agent:
             return self.model.negotiate(my_q, q)
 
     def act(self, obs: torch.Tensor, m: torch.Tensor):
-        a_logits, d_logits = self.model(obs, m)
+        a_logits, d_logits, v = self.model(obs, m)
         a_policy = functional.softmax(a_logits, dim=-1)
         d_policy = functional.softmax(d_logits, dim=-1)
         if self.train and self.act_choice(policy=torch.Tensor([self.eps, 1 - self.eps])) == 0:
@@ -62,7 +63,11 @@ class Agent:
             d_action = self.act_choice(policy=d_policy)
 
         if self.train:
-            self.log_p = torch.log(a_policy[a_action] * d_policy[d_action])
+            prob = a_policy[a_action] * d_policy[d_action]
+            if prob < 0.000001:
+                prob = prob + 0.000001
+            self.log_p = torch.log(prob)
+            self.v = v
 
             self.logger.log({f'{self.label}_eps': self.eps})
             if self.eps > self.cfg.eps_low:
@@ -75,8 +80,9 @@ class Agent:
     def rewarding(self, reward):
         self.logger.log({f'{self.label}_reward': reward})
         if self.train:
-            self.loss.collect(log_p=self.log_p, reward=reward)
+            self.loss.collect(log_p=self.log_p, reward=reward, value=self.v)
             self.log_p = None
+            self.v = None
 
     def learn(self):
         _loss = self.loss.compute()['loss']
