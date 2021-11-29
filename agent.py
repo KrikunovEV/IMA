@@ -20,6 +20,7 @@ class Agent:
         self.train = None
         self.log_p = None
         self.v = None
+        self.sum_reward = 0
         self.eps = cfg.eps_high
 
         if self.negotiable:
@@ -77,10 +78,11 @@ class Agent:
 
         return [a_action, d_action], a_policy, d_policy
 
-    def rewarding(self, reward):
+    def rewarding(self, reward, last):
+        self.sum_reward += reward
         self.logger.log({f'{self.label}_reward': reward})
         if self.train:
-            self.loss.collect(log_p=self.log_p, reward=reward, value=self.v)
+            self.loss.collect(log_p=self.log_p, reward=self.sum_reward if last else 0., value=self.v)
             self.log_p = None
             self.v = None
 

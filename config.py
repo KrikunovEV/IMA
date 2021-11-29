@@ -45,10 +45,10 @@ class Config:
     def init():
         return Config(
             # common
-            games=1,
+            games=100,
             players=3,
             neg_players=2,
-            epochs=80,
+            epochs=200,
             h_space=32,
             dk=64,
             # train
@@ -56,7 +56,7 @@ class Config:
             train_episodes=100,
             eps_high=0.5,
             eps_low=0.01,
-            eps_episodes=5000,
+            eps_episodes=15000,
             gamma=0.99,
             # test
             test_episodes=100

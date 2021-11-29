@@ -36,7 +36,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
             orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards, _, _ = env.step(choices)
-            orchestrator.rewarding(rewards)
+            orchestrator.rewarding(rewards, (episode + 1) == cfg.train_episodes)
         orchestrator.learn()
         orchestrator.logger.call('action_map', None)
         if debug:
@@ -53,7 +53,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
                 choices = orchestrator.act(obs)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards, _, _ = env.step(choices)
-                orchestrator.rewarding(rewards)
+                orchestrator.rewarding(rewards, (episode + 1) == cfg.test_episodes)
         orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     _configs = []
     _names = []
     repeats = config.games
-    for lr in [0.0001]:
+    for lr in [0.0005]:
         for h_space in [128]:
             _config = dataclasses.replace(config)
             _config.set('lr', lr)
