@@ -40,7 +40,7 @@ class Core(nn.Module):
         self.h = self.rnn(o, self.h)
         a_logits = self.o_policy(self.h)
         d_logits = self.d_policy(self.h)
-        v = self.value(self.h)
+        v = self.value(self.h.detach())
         return a_logits.squeeze(), d_logits.squeeze(), v.squeeze()
 
     def reset(self):

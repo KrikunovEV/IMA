@@ -47,13 +47,13 @@ class Config:
             # common
             games=100,
             players=3,
-            neg_players=2,
-            epochs=200,
+            neg_players=0,
+            epochs=500,
             h_space=32,
             dk=64,
             # train
             lr=0.01,
-            train_episodes=100,
+            train_episodes=32,
             eps_high=0.5,
             eps_low=0.01,
             eps_episodes=15000,

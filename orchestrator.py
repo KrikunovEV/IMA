@@ -83,6 +83,12 @@ class Orchestrator:
         for i in range(len(elo)):
             self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
 
+        if self.cfg.neg_players == 2:
+            if rewards[0] > 0:
+                rewards[1] = rewards[0]
+            elif rewards[1] > 0:
+                rewards[0] = rewards[1]
+
         for agent, reward in zip(self.agents, rewards):
             agent.rewarding(reward, last)
 

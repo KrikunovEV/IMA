@@ -79,7 +79,7 @@ if __name__ == '__main__':
             _configs.append(_config)
             _names.append(f'{lr}_{h_space}')
 
-    logger_server = LoggerServer()
+    logger_server = LoggerServer('32episodes, 500epochs, sum reward, no neg')
     logger_server.start()
 
     from custom import AvgCoopsMetric
