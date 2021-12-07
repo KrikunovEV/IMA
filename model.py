@@ -5,6 +5,31 @@ import torch.nn.functional as functional
 from config import Config
 
 
+class CoreDQN(nn.Module):
+
+    def __init__(self, o_space: int, a_space: int, cfg: Config):
+        super(CoreDQN, self).__init__()
+        self.cfg = cfg
+        self.h = None
+
+        self.rnn = nn.Sequential(
+            nn.GRUCell(o_space, cfg.h_space),
+            nn.LeakyReLU()
+        )
+
+        self.o_values = nn.Linear(cfg.h_space, a_space)
+        self.d_values = nn.Linear(cfg.h_space, a_space)
+
+    def forward(self, o):
+        self.h = self.rnn(o, self.h)
+        o_logits = self.o_policy(self.h)
+        d_logits = self.d_policy(self.h)
+        return o_logits.squeeze(), d_logits.squeeze()
+
+    def reset(self):
+        self.h = torch.zeros((1, self.cfg.h_space), device=self.cfg.device)
+
+
 class Core(nn.Module):
 
     def __init__(self, o_space: int, a_space: int, cfg: Config, negotiable: bool = False):

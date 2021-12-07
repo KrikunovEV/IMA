@@ -33,10 +33,10 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         obs = env.reset()
         orchestrator.reset_memory()
         for episode in range(cfg.train_episodes):
-            orchestrator.negotiation()
+            # orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards, _, _ = env.step(choices)
-            orchestrator.rewarding(rewards, (episode + 1) == cfg.train_episodes)
+            orchestrator.rewarding(rewards, obs)
         orchestrator.learn()
         orchestrator.logger.call('action_map', None)
         if debug:
@@ -49,11 +49,11 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
-                orchestrator.negotiation()
+                # orchestrator.negotiation()
                 choices = orchestrator.act(obs)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards, _, _ = env.step(choices)
-                orchestrator.rewarding(rewards, (episode + 1) == cfg.test_episodes)
+                orchestrator.rewarding(rewards, None)
         orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')

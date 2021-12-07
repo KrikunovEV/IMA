@@ -78,7 +78,7 @@ class Orchestrator:
         self.logger.log({'acts': actions, 'pvt': (a_policies, d_policies)})
         return actions
 
-    def rewarding(self, rewards, last):
+    def rewarding(self, rewards, next_o):  # last
         elo = self.mean_elo.step(rewards)
         for i in range(len(elo)):
             self.logger.log({f'{self.agents[i].label}_elo': elo[i]})

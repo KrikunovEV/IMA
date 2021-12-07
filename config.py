@@ -16,21 +16,25 @@ class Config:
     train_episodes: int
     eps_high: float
     eps_low: float
-    eps_episodes: int
+    eps_episodes_ratio: float
     gamma: float
     # test
     test_episodes: int
+    # dqn
+    dqn_batch_size: int
+    dqn_memory_cap: int
     # pre-defined
     cores: int = None
     seed: int = None
 
     device: torch.device = field(init=False)
-    eps_step: float = field(init=False)
+    eps_decay: float = field(init=False)
 
     def __post_init__(self):
         self.set('device', torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-        self.set('eps_step', (self.eps_high - self.eps_low) / self.eps_episodes)
-        self.set('cores', 2)
+        eps_decay = (self.eps_high - self.eps_low) / (self.epochs * self.train_episodes * self.eps_episodes_ratio)
+        self.set('eps_decay', eps_decay)
+        self.set('cores', 1)
 
     def set(self, param: str, value):
         if param in self.__annotations__.keys():
@@ -45,21 +49,24 @@ class Config:
     def init():
         return Config(
             # common
-            games=100,
+            games=1,
             players=3,
             neg_players=0,
-            epochs=500,
+            epochs=100,
             h_space=32,
             dk=64,
             # train
             lr=0.01,
-            train_episodes=32,
-            eps_high=0.5,
-            eps_low=0.01,
-            eps_episodes=15000,
+            train_episodes=16,
+            eps_high=0.9,
+            eps_low=0.05,
+            eps_episodes_ratio=0.8,
             gamma=0.99,
             # test
-            test_episodes=100
+            test_episodes=100,
+            # dqn
+            dqn_batch_size=32,
+            dqn_memory_cap=10000,
         )
 
 
