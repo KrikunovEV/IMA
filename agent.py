@@ -1,13 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as functional
-import numpy as np
 import random
 
-from model import Core, Negotiation, CoreDQN
+from model import CoreDQN
 from config import Config
-from rl import Reinforce, A2C, Choice, Uniform, Argmax
+from rl import Choice, Uniform, Argmax
 from logger import RunLogger
 
 

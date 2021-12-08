@@ -2,7 +2,6 @@ from orchestrator import Orchestrator
 from envs import OADEnv
 from config import Config
 from logger import LoggerServer
-from custom import CoopsMetric
 
 import time
 import numpy as np
