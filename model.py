@@ -5,10 +5,10 @@ import torch.nn.functional as functional
 from config import Config
 
 
-class CoreDQN(nn.Module):
+class QAttention(nn.Module):
 
     def __init__(self, o_space: int, a_space: int, cfg: Config):
-        super(CoreDQN, self).__init__()
+        super(QAttention, self).__init__()
         self.cfg = cfg
         self.h = None
 

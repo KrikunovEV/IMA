@@ -3,13 +3,14 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 
-from model import CoreDQN
+from model import QAttention
 from config import Config
 from rl import Uniform, Argmax
 from logger import RunLogger
+from memory import ReplayMemory
 
 
-class AgentDQN:
+class QAgent:
     def __init__(self, id: int, o_space: int, a_space: int, cfg: Config):
         self.id = id
         self.cfg = cfg
@@ -18,8 +19,7 @@ class AgentDQN:
         self.q_target = []
         self.reward = []
 
-        self.negotiable = True if id < cfg.neg_players else False
-        self.label = f'{id + 1}' + ('n' if self.negotiable else '')
+        self.label = f'{id + 1}'
         self.train = None
         self.eps = cfg.eps_high
 
@@ -32,6 +32,9 @@ class AgentDQN:
         self.act_uniform = Uniform()
         self.act_argmax = Argmax()
 
+        self.memory = ReplayMemory(cfg.capacity, cfg.window)
+        self.a_space = a_space
+
     def set_logger(self, logger: RunLogger):
         self.logger = logger
 
@@ -43,24 +46,28 @@ class AgentDQN:
         self.model_actual.reset()
         self.model_target.reset()
 
-    def act(self, obs: torch.Tensor):
-        o_logits, d_logits = self.model_actual(obs)
-        if self.train and random.random() < self.eps:
-            o_action = self.act_uniform(policy=o_logits)
-            d_action = self.act_uniform(policy=d_logits)
+    def act(self, obs):
+        if len(self.memory) > self.cfg.window:
+            o_logits, d_logits = self.model_actual(obs)
+            if self.train and random.random() < self.eps:
+                o_action = self.act_uniform(policy=o_logits)
+                d_action = self.act_uniform(policy=d_logits)
+            else:
+                o_action = self.act_argmax(policy=o_logits)
+                d_action = self.act_argmax(policy=d_logits)
+
+            if self.train:
+                self.q_actual.append([o_logits[o_action], d_logits[d_action]])
+                self.logger.log({f'{self.label}_eps': self.eps})
+                if self.eps > self.cfg.eps_low:
+                    self.eps -= self.cfg.eps_decay
+                    if self.eps < self.cfg.eps_low:
+                        self.eps = self.cfg.eps_low
         else:
-            o_action = self.act_argmax(policy=o_logits)
-            d_action = self.act_argmax(policy=d_logits)
+            o_action, d_action = torch.randint(self.a_space, size=(2,)).numpy()
+            o_policy, d_policy = torch.zeros(self.a_space), torch.zeros(self.a_space)
 
-        if self.train:
-            self.q_actual.append([o_logits[o_action], d_logits[d_action]])
-            self.logger.log({f'{self.label}_eps': self.eps})
-            if self.eps > self.cfg.eps_low:
-                self.eps -= self.cfg.eps_decay
-                if self.eps < self.cfg.eps_low:
-                    self.eps = self.cfg.eps_low
-
-        return [o_action, d_action]
+        return [o_action, d_action], o_policy, d_policy
 
     def rewarding(self, reward, next_o):
         self.logger.log({f'{self.label}_reward': reward})

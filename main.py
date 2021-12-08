@@ -1,7 +1,8 @@
 from orchestrator import Orchestrator
 from envs import OADEnv
 from config import Config
-from logger import LoggerServer
+from logger import LoggerServer, RunLogger
+from custom import AvgCoopsMetric
 
 import time
 import numpy as np
@@ -30,13 +31,12 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         # TRAINING
         orchestrator.set_mode(train=True)
         obs = env.reset()
-        orchestrator.reset_memory()
+        orchestrator.reset()
         for episode in range(cfg.train_episodes):
             # orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards, _, _ = env.step(choices)
-            orchestrator.rewarding(rewards, obs)
-        orchestrator.learn()
+            orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
         orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
@@ -44,15 +44,15 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         # EVALUATION
         orchestrator.set_mode(train=False)
         obs = env.reset()
-        orchestrator.reset_memory()
+        orchestrator.reset()
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
                 # orchestrator.negotiation()
-                choices = orchestrator.act(obs)
+                choices = orchestrator.inference(obs)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards, _, _ = env.step(choices)
-                orchestrator.rewarding(rewards, None)
+                orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
         orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
@@ -64,44 +64,33 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
 
 
 if __name__ == '__main__':
-    config = Config.init()
+    configs = Config.init()
 
-    import dataclasses
-    _configs = []
-    _names = []
-    repeats = config.games
-    for lr in [0.0005]:
-        for h_space in [128]:
-            _config = dataclasses.replace(config)
-            _config.set('lr', lr)
-            _config.set('h_space', h_space)
-            _configs.append(_config)
-            _names.append(f'{lr}_{h_space}')
-
-    logger_server = LoggerServer('32episodes, 500epochs, sum reward, no neg')
+    logger_server = LoggerServer()
     logger_server.start()
 
-    from custom import AvgCoopsMetric
-    from logger import RunLogger
-    run_logger = RunLogger(logger_server.queue)
-    run_logger.init('avg', False, AvgCoopsMetric('acts', repeats, config.epochs))
+    for i, (name, config) in enumerate(configs.items()):
+        run_logger = RunLogger(logger_server.queue)
+        run_logger.init(f'avg_{name}', False, AvgCoopsMetric('acts', config.repeats, config.epochs))
 
-    with ProcessPoolExecutor(max_workers=config.cores) as executor:
-        runners = []
-        for repeat in range(repeats):
-            for _name, _config in zip(_names, _configs):
-                _name = f'r{repeat}_{_name}'
-                runners.append(executor.submit(env_runner, _name, _config, logger_server.queue))
+        with ProcessPoolExecutor(max_workers=config.cores) as executor:
+            runners = []
+            for repeat in range(config.repeats):
+                _name = f'r{repeat}_{name}'
+                runners.append(executor.submit(env_runner, _name, config, logger_server.queue))
 
-        for counter, runner in enumerate(as_completed(runners)):
-            try:
-                result = runner.result()
-                run_logger.log({'acts': result})
-            except Exception as ex:
-                raise ex
+            for counter, runner in enumerate(as_completed(runners)):
+                try:
+                    result = runner.result()
+                    run_logger.log({'acts': result})
+                except Exception as ex:
+                    raise ex
 
-            print(f'Games finished: {counter + 1}/{len(runners)}')
+                print(f'Games finished: {counter + 1}/{len(runners)}')
 
-    run_logger.call('avg_coop_bars', None)
-    run_logger.deinit()
+        run_logger.call('avg_coop_bars', None)
+        run_logger.deinit()
+
+        print(f'Config {i + 1}/{len(configs)} done')
+
     logger_server.stop()

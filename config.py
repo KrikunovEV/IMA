@@ -11,7 +11,6 @@ class Config:
 
     # train
     train_episodes: int
-    last_episode: Union[int, tuple]
     gamma: float
 
     # exploration
@@ -25,7 +24,12 @@ class Config:
     # test
     test_episodes: int
 
+    # recurrent
+    h_space: Union[int, tuple]
+    window: Union[int, tuple]
+
     # memory
+    capacity: int
 
     # add later
     # neg_players: int
@@ -63,7 +67,6 @@ class Config:
             epochs=100,
             # train
             train_episodes=1000,
-            last_episode=25,
             gamma=0.99,
             # exploration
             eps_high=0.9,
@@ -72,7 +75,12 @@ class Config:
             # optimizer
             lr=0.005,
             # test
-            test_episodes=1000,
+            test_episodes=100,
+            # recurrent
+            h_space=32,
+            window=25,
+            # memory
+            capacity=10000,
         )
 
         configs = {'base': base}
