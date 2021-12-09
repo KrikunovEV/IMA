@@ -1,12 +1,10 @@
 import torch
 import multiprocessing as mp
-import numpy as np
 
-from logger import RunLogger, Metric
+from logger import RunLogger
 from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric
 from config import Config
-# from agent import Agent
-from agent_dqn import QAgent
+from agents.q_attention import Agent
 from elo_systems import MeanElo
 
 
@@ -14,7 +12,7 @@ class Orchestrator:
 
     def __init__(self, o_space: int, a_space: int, cfg: Config, queue: mp.Queue, name: str):
         self.cfg = cfg
-        self.agents = [QAgent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
+        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
         self.mean_elo = MeanElo(cfg.players)
 
         self.logger = RunLogger(queue)

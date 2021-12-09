@@ -77,7 +77,7 @@ class Config:
             # test
             test_episodes=100,
             # recurrent
-            h_space=32,
+            h_space=4,
             window=25,
             # memory
             capacity=10000,
