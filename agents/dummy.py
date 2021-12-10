@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 
-from models.model import CoreDQN
+from models.dummy import CoreDQN
 from config import Config
 from rl import Choice, Uniform, Argmax
 from logger import RunLogger
