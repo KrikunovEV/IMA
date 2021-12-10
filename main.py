@@ -11,7 +11,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
+def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
     start_time = time.time()
 
     seed = np.abs(name.__hash__()) % 4294967296  # 2**32
@@ -31,9 +31,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         # TRAINING
         orchestrator.set_mode(train=True)
         obs = env.reset()
-        orchestrator.reset()
         for episode in range(cfg.train_episodes):
-            # orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards, _, _ = env.step(choices)
             orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
@@ -44,12 +42,11 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = False):
         # EVALUATION
         orchestrator.set_mode(train=False)
         obs = env.reset()
-        orchestrator.reset()
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
                 # orchestrator.negotiation()
-                choices = orchestrator.inference(obs)
+                choices = orchestrator.inference(obs, episode)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards, _, _ = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)

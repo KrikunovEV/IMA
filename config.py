@@ -30,6 +30,7 @@ class Config:
 
     # memory
     capacity: int
+    no_learn_episodes: int
 
     # add later
     # neg_players: int
@@ -64,7 +65,7 @@ class Config:
         base = Config(
             # common
             players=3,
-            epochs=100,
+            epochs=25,
             # train
             train_episodes=1000,
             gamma=0.99,
@@ -77,10 +78,11 @@ class Config:
             # test
             test_episodes=100,
             # recurrent
-            h_space=4,
-            window=25,
+            h_space=32,
+            window=12,
             # memory
             capacity=10000,
+            no_learn_episodes=100,
         )
 
         configs = {'base': base}

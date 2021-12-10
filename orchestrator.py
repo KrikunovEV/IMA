@@ -39,33 +39,15 @@ class Orchestrator:
         for agent in self.agents:
             agent.set_mode(train)
 
-    def negotiation(self):
-        # q_all = dict()
-        # for agent in self.agents:
-        #     for key, value in agent.message().items():
-        #         q_all[key] = value
-        #
-        # self.m = dict()
-        # for a_id, value in q_all.items():
-        #     my_q = value
-        #     q = []
-        #     for a_id2, value2 in q_all.items():
-        #         if a_id == a_id2:
-        #             continue
-        #         q.append(value2.detach())
-        #     a_id = int(a_id)
-        #     self.m[a_id] = self.agents[a_id].negotiate(my_q, torch.stack(q))
-        return
-
     def act(self, obs):
-        obs = self._preprocess(obs)
-        actions, a_policies, d_policies = [], [], []
-        for agent, obs_i in zip(self.agents, obs):
-            acts, ap, dp = agent.act(obs_i)
-            actions.append(acts)
-            a_policies.append(ap.detach().cpu().numpy())
-            d_policies.append(dp.detach().cpu().numpy())
-        self.logger.log({'acts': actions, 'pvt': (a_policies, d_policies)})
+        local_obs = self._preprocess(obs)
+        actions, o_policies, d_policies = [], [], []
+        for agent, agent_obs in zip(self.agents, local_obs):
+            output = agent.act(agent_obs)
+            actions.append(output['acts'])
+            o_policies.append(output['policies'][0].detach().cpu().numpy())
+            d_policies.append(output['policies'][1].detach().cpu().numpy())
+        self.logger.log({'acts': actions, 'pvt': (o_policies, d_policies)})
         return actions
 
     def rewarding(self, rewards, next_obs, last: bool):
@@ -73,15 +55,27 @@ class Orchestrator:
         for i in range(len(elo)):
             self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
 
-        for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, next_obs, last)
+        local_next_obs = self._preprocess(next_obs)
+        for agent, reward, agent_obs in zip(self.agents, rewards, local_next_obs):
+            agent.rewarding(reward, agent_obs, last)
 
-    def inference(self, obs):
-        obs = self._preprocess(obs)
+    def inference(self, obs, episode):
+        local_obs = self._preprocess(obs)
+        actions = []
+        for agent, agent_obs in zip(self.agents, local_obs):
+            output = agent.inference(agent_obs)
+            actions.append(output['acts'])
+
+        if episode >= self.cfg.window * 2:
+            # first 'window' times are random, second 'window' times fill history by following right policy
+            self.logger.log({'acts': actions})
+
+        return actions
 
     def _preprocess(self, obs):
-        obs_i = []
+        obs = torch.from_numpy(obs)
+        local_obs = []
         for i, agent in enumerate(self.agents):
             _obs = torch.concat((obs[i:], obs[:i])).view(-1)
-            obs_i.append(_obs)
-        return obs_i
+            local_obs.append(_obs)
+        return local_obs

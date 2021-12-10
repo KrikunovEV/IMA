@@ -18,7 +18,7 @@ class Core(nn.Module):
     def forward(self, obs):
         h = [torch.zeros((1, self.cfg.h_space), device=self.cfg.device)]
         for o in obs:
-            h_next = self.rnn(o.unsqueeze(0), h[-1])
+            h_next = self.rnn(o.to(self.cfg.device).unsqueeze(0), h[-1])
             h.append(h_next)
 
         h_last = h[-1].T
