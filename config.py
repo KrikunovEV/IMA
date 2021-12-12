@@ -6,36 +6,31 @@ import torch
 @dataclass(init=True, frozen=True)
 class Config:
     # common
-    players: int
-    epochs: int
+    players: int = 3
+    epochs: int = 25
 
     # train
-    train_episodes: int
-    gamma: float
+    train_episodes: int = 1000
+    gamma: float = 0.99
 
     # exploration
-    eps_high: float
-    eps_low: float
-    eps_episodes_ratio: float
+    eps_high: float = 0.9
+    eps_low: float = 0.05
+    eps_episodes_ratio: float = 0.8
 
     # optimizer
-    lr: Union[float, tuple]
+    lr: Union[float, tuple] = 0.005
 
     # test
-    test_episodes: int
+    test_episodes: int = 100
 
     # recurrent
-    h_space: Union[int, tuple]
-    window: Union[int, tuple]
+    h_space: Union[int, tuple] = 32
+    window: Union[int, tuple] = 10
 
     # memory
-    capacity: int
-    no_learn_episodes: int
-
-    # add later
-    # neg_players: int
-    # h_space: int
-    # dk: int
+    capacity: int = 10000
+    no_learn_episodes: int = 100
 
     # pre-defined
     cores: int = 1
@@ -62,45 +57,10 @@ class Config:
 
     @staticmethod
     def init():
-        base = Config(
-            # common
-            players=3,
-            epochs=25,
-            # train
-            train_episodes=1000,
-            gamma=0.99,
-            # exploration
-            eps_high=0.9,
-            eps_low=0.05,
-            eps_episodes_ratio=0.8,
-            # optimizer
-            lr=0.005,
-            # test
-            test_episodes=100,
-            # recurrent
-            h_space=32,
-            window=12,
-            # memory
-            capacity=10000,
-            no_learn_episodes=100,
-        )
+        configs = {'base': Config()}
 
-        configs = {'base': base}
         while True:
-
-            # check that all values are unpacked
-            unpacking = False
-            for config in configs.values():
-                for value in config.as_dict().values():
-                    if isinstance(value, tuple):
-                        unpacking = True
-                        break
-                if unpacking:
-                    break
-            if not unpacking:
-                break
-
-            # if found, unpack ony first entry of tuple data
+            # unpack only the first entry of tuple data
             unpacked_configs = dict()
             for name, config in configs.items():
                 for key, value in config.as_dict().items():
@@ -111,6 +71,10 @@ class Config:
                             new_name = f'{key}={v}' if name == 'base' else f'{name} {key}={v}'
                             unpacked_configs[new_name] = _config
                         break
+
+            if len(unpacked_configs) == 0:
+                break
+
             configs = unpacked_configs
 
         return configs
