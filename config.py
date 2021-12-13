@@ -7,7 +7,10 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 25
+    epochs: int = 10
+    cores: int = 1
+    repeats: int = 1
+    seed: int = None
 
     # train
     train_episodes: int = 1000
@@ -29,13 +32,8 @@ class Config:
     window: Union[int, tuple] = 10
 
     # memory
-    capacity: int = 10000
+    capacity: int = 5000
     no_learn_episodes: int = 100
-
-    # pre-defined
-    cores: int = 1
-    seed: int = None
-    repeats: int = 1
 
     # has to be post-initialized
     device: torch.device = field(init=False)
