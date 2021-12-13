@@ -2,7 +2,7 @@ import torch
 import multiprocessing as mp
 
 from logger import RunLogger
-from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric
+from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
 from config import Config
 from agents.q_learning import Agent
 from elo_systems import MeanElo
@@ -10,17 +10,17 @@ from elo_systems import MeanElo
 
 class Orchestrator:
 
-    def __init__(self, o_space: int, a_space: int, cfg: Config, queue: mp.Queue, name: str):
+    def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, logger: RunLogger):
         self.cfg = cfg
-        self.logger = RunLogger(queue)
+        self.logger = logger
         self.agents = [Agent(id=i, o_space=o_space, a_space=a_space,
                              cfg=cfg, logger=self.logger) for i in range(cfg.players)]
         self.mean_elo = MeanElo(cfg.players)
 
         metrics = [
-            # ActionMap('acts', cfg.players, [agent.label for agent in self.agents]),
-            # PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents]),
-            CoopsMetric('acts', name)
+            ActionMap('acts', cfg.players, [agent.label for agent in self.agents], log_on_train=False),
+            PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
+            CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
         ]
         for agent in self.agents:
             # metrics.append(ModelArt(f'{agent.agent_label}_model'))

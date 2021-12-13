@@ -75,7 +75,7 @@ class Agent:
 
     def inference(self, obs):
         self.obs_history.append(obs)
-        state = torch.stack([*self.obs_history])
+        state = torch.stack([*self.obs_history]).to(self.cfg.device)
         o_q, d_q = self.model_actual(state)
         o_action = o_q[-1].argmax().item()
         d_action = d_q[-1].argmax().item()
@@ -89,11 +89,11 @@ class Agent:
         data = self.memory.sample()
         batch = Transition(*zip(*data))
 
-        state = torch.stack(batch.state)
+        state = torch.stack(batch.state).to(self.cfg.device)
         o_action = torch.LongTensor(batch.o_action)
         d_action = torch.LongTensor(batch.d_action)
         reward = np.array(batch.reward)
-        state_next = torch.stack(batch.next_state)
+        state_next = torch.stack(batch.next_state).to(self.cfg.device)
 
         o_q, d_q = self.model_actual(state)
         o_q = o_q[torch.arange(self.cfg.window), o_action]

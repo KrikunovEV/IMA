@@ -5,6 +5,7 @@ import os
 import cv2 as cv
 
 from logger import Metric, BatchMetric, IArtifact
+from config import Config
 
 
 class BatchSumMetric(BatchMetric):
@@ -39,8 +40,8 @@ class BatchAvgMetric(BatchMetric):
     def on_all(self):
         if len(self.values) > 0:
             super(BatchAvgMetric, self).on_log(np.mean(self.values))
-            super(BatchAvgMetric, self).on_all()
             self.values = []
+        super(BatchAvgMetric, self).on_all()
 
 
 class BatchSumAvgMetric(BatchMetric):
@@ -80,8 +81,9 @@ class BatchSumAvgMetric(BatchMetric):
 
 
 class CoopsMetric(IArtifact):
-    def __init__(self, key: str, suffix: str):
-        super(CoopsMetric, self).__init__(key, suffix, False, True, True)
+    def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
+                 is_global: bool = False):
+        super(CoopsMetric, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
         self.coops = []
 
     def set_mode(self, train: bool):
@@ -109,8 +111,8 @@ class CoopsMetric(IArtifact):
             ax[i].set_ylabel('# of coops')
             ax[i].set_ylim(-0.01, 100.01)
             ax[i].bar(epochs, np_coops[:, i])
-            ax[i].set_xticks(epochs[::5])
-            for e in epochs[::5]:
+            ax[i].set_xticks(epochs)
+            for e in epochs:
                 ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
         fig.tight_layout()
         fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
@@ -121,11 +123,11 @@ class CoopsMetric(IArtifact):
 
 
 class AvgCoopsMetric(IArtifact):
-    def __init__(self, key: str, repeats, epochs):
-        super(AvgCoopsMetric, self).__init__(key, '', False, True, False)
+    def __init__(self, key: str, cfg: Config, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
+                 is_global: bool = False):
+        super(AvgCoopsMetric, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
         self.coops = []
-        self.repeats = repeats
-        self.epochs = epochs
+        self.cfg = cfg
 
     def on_log(self, game_actions):
         coops = []
@@ -141,10 +143,10 @@ class AvgCoopsMetric(IArtifact):
         self.coops.append(coops)
 
     def avg_coop_bars(self, data):
-        avg_coops = np.zeros((self.epochs, 3), dtype=np.int64)
+        avg_coops = np.zeros((self.cfg.epochs, 3), dtype=np.int64)
         for coops in self.coops:
             avg_coops += np.array(coops)
-        self.coops = avg_coops / self.repeats
+        self.coops = avg_coops / self.cfg.repeats
 
         epochs = np.arange(len(self.coops))
         np_coops = np.array(self.coops)
@@ -174,8 +176,9 @@ class ActionMap(IArtifact):
     OFFEND: int = 0
     DEFEND: int = 1
 
-    def __init__(self, key: str, players: int, labels: list):
-        super(ActionMap, self).__init__(key)
+    def __init__(self, key: str, players: int, labels: list, suffix: str = '', log_on_train: bool = True,
+                 log_on_eval: bool = True, is_global: bool = False):
+        super(ActionMap, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
         self.players = players
         self.labels = labels
         self.OM = np.zeros((players, players), dtype=np.int)
@@ -196,10 +199,10 @@ class ActionMap(IArtifact):
                    ax=ax[1], square=True, cbar=False, annot=True, fmt='d')
         fig.tight_layout()
 
-        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_step{self._get_step()}.png')
+        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_{self._dest_dir}.png')
         plt.savefig(fullname)
         plt.close(fig)
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self._dest_dir)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
         os.remove(fullname)
 
         self.OM = np.zeros((self.players, self.players), dtype=np.int)
@@ -208,8 +211,9 @@ class ActionMap(IArtifact):
 
 class PolicyViaTime(IArtifact):
 
-    def __init__(self, key: str, players: int, labels: list):
-        super(PolicyViaTime, self).__init__(key, log_on_eval=False)
+    def __init__(self, key: str, players: int, labels: list, suffix: str = '', log_on_train: bool = True,
+                 log_on_eval: bool = True, is_global: bool = False):
+        super(PolicyViaTime, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
         self.players = players
         self.labels = labels
         self.filenames = []
@@ -249,5 +253,5 @@ class PolicyViaTime(IArtifact):
             os.remove(filename)
         writer.release()
 
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self._dest_dir)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
         os.remove(fullname)

@@ -7,7 +7,7 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 10
+    epochs: int = 2
     cores: int = 1
     repeats: int = 1
     seed: int = None
