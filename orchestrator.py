@@ -1,33 +1,35 @@
-import torch
+import numpy as np
 import multiprocessing as mp
 
 from logger import RunLogger
 from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
 from config import Config
-from agents.q_learning import Agent
-from elo_systems import MeanElo
+from agents.q_attention import Agent
+from elo_systems import MeanEloI
+from utils import indices_except, append_dict2dict
 
 
 class Orchestrator:
 
-    def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, logger: RunLogger):
+    def __init__(self, o_space: int, a_space: int, cfg: Config, queue: mp.Queue, name: str):
         self.cfg = cfg
-        self.logger = logger
-        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space,
-                             cfg=cfg, logger=self.logger) for i in range(cfg.players)]
-        self.mean_elo = MeanElo(cfg.players)
+        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
+        self.mean_elo = MeanEloI(cfg.players)
 
+        self.logger = RunLogger(queue)
         metrics = [
-            ActionMap('acts', cfg.players, [agent.label for agent in self.agents], log_on_train=False),
-            PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
-            CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
+            ActionMap('acts', cfg.players, [agent.label for agent in self.agents]),
+            #PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents]),
+            CoopsMetric('acts', name)
         ]
         for agent in self.agents:
+            agent.set_logger(self.logger)
             # metrics.append(ModelArt(f'{agent.agent_label}_model'))
-            metrics.append(BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False))
-            # metrics.append(BatchAvgMetric(f'{agent.label}_elo', 10, epoch_counter=True))
-            metrics.append(BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False))
+            #metrics.append(BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False))
+            #metrics.append(BatchAvgMetric(f'{agent.label}_elo', 10, epoch_counter=True))
+            #metrics.append(BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False))
             # metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
+
         self.logger.init(name, True, *metrics)
         self.logger.param(cfg.as_dict())
 
@@ -39,44 +41,35 @@ class Orchestrator:
         for agent in self.agents:
             agent.set_mode(train)
 
-    def act(self, obs):
-        local_obs = self._preprocess(obs)
-        actions, o_policies, d_policies = [], [], []
-        for agent in self.agents:
-            output = agent.act(local_obs)
-            actions.append(output['acts'])
-            o_policies.append(output['policies'][0].detach().cpu().numpy())
-            d_policies.append(output['policies'][1].detach().cpu().numpy())
-        self.logger.log({'acts': actions, 'pvt': (o_policies, d_policies)})
+    def _make_act(self, obs):
+        logging_dict = {}
+        actions = np.zeros((2, len(self.agents), len(self.agents)), dtype=np.int32)
+        actions_key = self.cfg.actions_key
+        for agent_id, (agent, agent_obs) in enumerate(zip(self.agents, self._preprocess(obs))):
+            output = agent.act(agent_obs) if agent.train else agent.inference(agent_obs)
+            actions[:, agent_id, indices_except(agent_id, self.agents)] = output.pop(actions_key, None)
+            if len(output) > 0:
+                append_dict2dict(output, logging_dict)
+        logging_dict[actions_key] = actions
+        self.logger.log(logging_dict)
+
         return actions
+
+    def act(self, obs):
+        return self._make_act(obs)
+
+    def inference(self, obs, episode):
+        return self._make_act(obs)
 
     def rewarding(self, rewards, next_obs, last: bool):
         elo = self.mean_elo.step(rewards)
-        for i in range(len(elo)):
+
+        for i, _ in enumerate(elo):
             self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
 
-        local_next_obs = self._preprocess(next_obs)
-        for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, local_next_obs, last)
-
-    def inference(self, obs, episode):
-        local_obs = self._preprocess(obs)
-        actions = []
-        for agent in self.agents:
-            output = agent.inference(local_obs)
-            actions.append(output['acts'])
-
-        if episode >= self.cfg.window:
-            # first 'window' times are zeros
-            self.logger.log({'acts': actions})
-
-        return actions
+        for agent, reward, agent_obs in zip(self.agents, rewards, self._preprocess(next_obs)):
+            agent.rewarding(reward, agent_obs, last)
 
     def _preprocess(self, obs):
-        # obs = torch.from_numpy(obs)
-        # local_obs = []
-        # for i, agent in enumerate(self.agents):
-        #     _obs = torch.cat((obs[i:], obs[:i])).view(-1)
-        #     local_obs.append(_obs)
-        local_obs = torch.from_numpy(obs).view(-1)
-        return local_obs
+        return [np.concatenate((obs[i:], obs[:i])).reshape(-1)
+                for i, _ in enumerate(self.agents)]

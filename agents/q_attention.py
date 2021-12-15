@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import deque
-import numpy as np
 
 from config import Config
 from logger import RunLogger
 from memory import ReplayMemory, Transition
 from models.q_attention import Core
+from utils import to_one_hot
 
 
 class Agent:
@@ -44,8 +44,11 @@ class Agent:
         self.obs_history.append(obs)
         self.obs = obs
 
-        if len(self.obs_history) == self.cfg.window:
-            state = torch.stack([*self.obs_history])
+        if len(self.obs_history) != self.cfg.window:
+            o_action, d_action = torch.randint(self.a_space, size=(2,))
+            o_q, d_q = torch.zeros(self.a_space), torch.zeros(self.a_space)
+        else:
+            state = torch.tensor(self.obs_history)
             o_q, d_q = self.model_actual(state)
             exploration = torch.rand(1) < self.eps
             o_action = torch.randint(self.a_space, size=(1,)) if exploration else o_q.argmax().detach().cpu()
@@ -59,13 +62,25 @@ class Agent:
 
             if len(self.memory) > self.cfg.no_learn_episodes:
                 self._learn()
-        else:
-            o_action, d_action = torch.randint(self.a_space, size=(2,))
-            o_q, d_q = torch.zeros(self.a_space), torch.zeros(self.a_space)
 
         self.o_action = o_action.item()
         self.d_action = d_action.item()
-        return {'acts': [o_action, d_action], 'policies': [o_q, d_q]}
+        return {self.cfg.actions_key: (to_one_hot(o_action, size=(self.a_space,)),
+                                       to_one_hot(d_action, size=(self.a_space,))),
+                self.cfg.offend_policy_key: o_q, self.cfg.defend_policy_key: d_q}
+
+    def inference(self, obs):
+        self.obs_history.append(obs)
+        if len(self.obs_history) != self.cfg.window:
+            o_action, d_action = torch.randint(self.a_space, size=(2,))
+        else:
+            state = torch.tensor(self.obs_history)
+            o_q, d_q = self.model_actual(state)
+            o_action = o_q.argmax().item()
+            d_action = d_q.argmax().item()
+
+        return {self.cfg.actions_key: (to_one_hot(o_action, size=(self.a_space,)),
+                                       to_one_hot(d_action, size=(self.a_space,)))}
 
     def rewarding(self, reward, next_obs, last):
         self.logger.log({f'{self.label}_reward': reward})
@@ -74,27 +89,15 @@ class Agent:
         if last:
             self.model_target.load_state_dict(self.model_actual.state_dict())
 
-    def inference(self, obs):
-        self.obs_history.append(obs)
-        if len(self.obs_history) == self.cfg.window:
-            state = torch.stack([*self.obs_history])
-            o_q, d_q = self.model_actual(state)
-            o_action = o_q.argmax().item()
-            d_action = d_q.argmax().item()
-        else:
-            o_action, d_action = torch.randint(self.a_space, size=(2,)).numpy()
-
-        return {'acts': [o_action, d_action]}
-
     def _learn(self):
         data = self.memory.sample()
         batch = Transition(*zip(*data))
 
-        state = torch.stack(batch.state)
+        state = torch.tensor(batch.state)
         o_action = torch.LongTensor(batch.o_action)
         d_action = torch.LongTensor(batch.d_action)
-        reward = np.array(batch.reward)
-        state_next = torch.stack(batch.next_state)
+        reward = torch.tensor(batch.reward)
+        state_next = torch.tensor(batch.next_state)
 
         o_q, d_q = self.model_actual(state)
         o_q = o_q[o_action[-1].item()].unsqueeze(0)

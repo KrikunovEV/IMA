@@ -9,6 +9,7 @@ class IZeroSumEloSystem:
 
     def __init__(self, players: int):
         self.players = players
+        self.elo = None
         self.reset()
 
     def reset(self):
@@ -19,7 +20,7 @@ class IZeroSumEloSystem:
         """ rewards.sum() = 0 """
         raise NotImplementedError
 
-    def _update_elo_(self, rewards, estimates):
+    def _update_elo(self, rewards, estimates):
         """ estimates are: VERSUS_PLAYER_ELO (estimated in multiplayer) - CURRENT_PLAYER_ELO """
         # sigmoid
         estimates = 1. / (1. + self.BASE ** (estimates / self.DEL))
@@ -31,26 +32,26 @@ class IZeroSumEloSystem:
         self.elo = self.elo + (self.K * estimates).astype(np.int)
 
 
-class MeanElo(IZeroSumEloSystem):
+class MeanEloI(IZeroSumEloSystem):
 
     def __init__(self, players: int):
-        super(MeanElo, self).__init__(players)
+        super(MeanEloI, self).__init__(players)
 
     def step(self, rewards):
         # Use mean elo of other players to correct your elo
-        elo_sum = np.sum(self.elo)
-        estimates = ((elo_sum - self.elo) / (self.players - 1)) - self.elo  # mean R other - R current
+        #elo_sum = np.sum(self.elo)
+        estimates = ((np.sum(self.elo) - self.elo) / (self.players - 1)) - self.elo  # mean R other - R current
 
-        self._update_elo_(rewards, estimates)
+        self._update_elo(rewards, estimates)
         return self.elo
 
 
-class SMElo(IZeroSumEloSystem):
+class SMEloI(IZeroSumEloSystem):
     # http://www.tckerrigan.com/Misc/Multiplayer_Elo/
     # Simple Multiplayer Elo (SME)
 
     def __init__(self, players: int):
-        super(SMElo, self).__init__(players)
+        super(SMEloI, self).__init__(players)
 
     def step(self, rewards):
         # Use right or left player to correct your elo
@@ -64,7 +65,7 @@ class SMElo(IZeroSumEloSystem):
                 vs_player = cur_player if i == (self.players - 1) else argind[i + 1]
             estimates[cur_player] += estimates[vs_player]
 
-        self._update_elo_(rewards, estimates)
+        self._update_elo(rewards, estimates)
         return self.elo
 
 
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     episodes = 100
     X = np.arange(episodes + 1)
 
-    elo_systems = [SMElo(players), MeanElo(players)]
+    elo_systems = [SMEloI(players), MeanEloI(players)]
 
     p1_win = np.array([1., -0.5, -0.5])
     p1p2_win = np.array([0.5, 0.5, -1.])
