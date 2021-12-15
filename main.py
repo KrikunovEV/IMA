@@ -11,7 +11,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug: bool = True):
+def env_runner(name: str, cfg: Config, queue: mp.Queue, debug: bool = True):
     start_time = time.time()
 
     seed = np.abs(name.__hash__()) % 4294967296  # 2**32
@@ -22,22 +22,22 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
 
     env = OADEnv(players=cfg.players, debug=False)
-    logger = RunLogger(queue)
-    orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n), a_space=env.action_space.shape[0],
-                                cfg=cfg, name=name, logger=logger)
+
+    orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
+                                a_space=env.action_space.shape[0],
+                                cfg=cfg, queue=queue, name=name)
 
     choices_eval_to_return = []
 
     for epoch in range(cfg.epochs):
-
         # TRAINING
         orchestrator.set_mode(train=True)
         obs = env.reset()
         for episode in range(cfg.train_episodes):
             choices = orchestrator.act(obs)
-            obs, rewards, _, _ = env.step(choices)
+            obs, rewards = env.step(choices)
             orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
-        logger.all()
+        orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
 
@@ -47,19 +47,19 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
+                # orchestrator.negotiation()
                 choices = orchestrator.inference(obs, episode)
                 choices_eval_to_return[-1].append(choices)
-                obs, rewards, _, _ = env.step(choices)
+                obs, rewards = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
-        logger.call('action_map', None)
-        logger.all()
+        orchestrator.logger.call('action_map', None)
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
-    logger.call('policy_via_time', None)
-    logger.call('coop_bars', None)
-    logger.param({'spent time': time.time() - start_time})
-    return {'to_return': _to_return, 'acts': choices_eval_to_return}
+    orchestrator.logger.call('policy_via_time', None)
+    orchestrator.logger.call('coop_bars', None)
+    orchestrator.logger.param({'spent time': time.time() - start_time})
+    return choices_eval_to_return
 
 
 if __name__ == '__main__':
@@ -68,37 +68,27 @@ if __name__ == '__main__':
     logger_server = LoggerServer()
     logger_server.start()
 
-    cores = next(iter(configs.values())).cores
-    with ProcessPoolExecutor(max_workers=cores) as executor:
-        runners = []
+    for i, (name, config) in enumerate(configs.items()):
+        run_logger = RunLogger(logger_server.queue)
+        run_logger.init(f'avg_{name}', False, AvgCoopsMetric('acts', config.repeats, config.epochs))
+        with ProcessPoolExecutor(max_workers=config.cores) as executor:
+            runners = []
+            for repeat in range(config.repeats):
+                _name = f'r{repeat}_{name}'
+                runners.append(executor.submit(env_runner, _name, config, logger_server.queue))
 
-        for i, (name, config) in enumerate(configs.items()):
+            for counter, runner in enumerate(as_completed(runners)):
+                try:
+                    result = runner.result()
+                    run_logger.log({'acts': result})
+                except Exception as ex:
+                    raise ex
 
-            if config.repeats > 1:
-                run_logger = RunLogger(logger_server.queue)
-                run_logger.init(f'repeats_{name}', False, AvgCoopsMetric('acts', config, log_on_train=False))
+                print(f'Games finished: {counter + 1}/{len(runners)}')
 
-                for repeat in range(config.repeats):
-                    _name = f'r{repeat} {name}'
-                    to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats}
-                    runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
-            else:
-                to_return = None
-                runners.append(executor.submit(env_runner, name, config, logger_server.queue, to_return))
+        run_logger.call('avg_coop_bars', None)
+        run_logger.deinit()
 
-        for counter, runner in enumerate(as_completed(runners)):
-            try:
-                result = runner.result()
-                to_return = result['to_return']
-                if to_return is not None:
-                    run_logger = to_return['run_logger']
-                    run_logger.log({'acts': result['acts']})
-                    if to_return['last']:
-                        run_logger.call('avg_coop_bars', None)
-                        run_logger.deinit()
-            except Exception as ex:
-                raise ex
-
-            print(f'Games finished: {counter + 1}/{len(runners)}')
+        print(f'Config {i + 1}/{len(configs)} done')
 
     logger_server.stop()
