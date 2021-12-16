@@ -12,10 +12,10 @@ from utils import to_one_hot
 
 
 class Agent:
-    def __init__(self, id: int, o_space: int, a_space: int, cfg: Config, logger: RunLogger):
+    def __init__(self, id: int, o_space: int, a_space: int, cfg: Config):
         self.id = id
         self.cfg = cfg
-        self.logger = logger
+        self.logger = None
         self.label = f'{id + 1}'
         self.train = None
         self.a_space = a_space
@@ -34,6 +34,9 @@ class Agent:
         self.obs = None
         self.o_action = None
         self.d_action = None
+
+    def set_logger(self, logger: RunLogger):
+        self.logger = logger
 
     def set_mode(self, train: bool):
         self.train = train

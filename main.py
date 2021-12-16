@@ -22,10 +22,9 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
 
     env = OADEnv(players=cfg.players, debug=False)
-    logger = RunLogger(queue)
     orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
                                 a_space=env.action_space.shape[0],
-                                cfg=cfg, name=name, logger=logger)
+                                cfg=cfg, name=name, queue=queue)
 
     choices_eval_to_return = []
 
@@ -38,7 +37,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
             choices = orchestrator.act(obs)
             obs, rewards = env.step(choices)
             orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
-        logger.all()
+        orchestrator.logger.all()
         if debug:
             print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
 
@@ -52,14 +51,14 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
-        logger.call('action_map', None)
-        logger.all()
+        orchestrator.logger.call('action_map', None)
+        orchestrator.logger.all()
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
-    logger.call('policy_via_time', None)
-    logger.call('coop_bars', None)
-    logger.param({'spent time': time.time() - start_time})
+    orchestrator.logger.call('policy_via_time', None)
+    orchestrator.logger.call('coop_bars', None)
+    orchestrator.logger.param({'spent time': time.time() - start_time})
     return {'to_return': _to_return, 'acts': choices_eval_to_return}
 
 
@@ -76,8 +75,8 @@ if __name__ == '__main__':
         for i, (name, config) in enumerate(configs.items()):
 
             if config.repeats > 1:
-                run_logger = RunLogger(logger_server.queue)
-                run_logger.init(f'repeats_{name}', False, AvgCoopsMetric('acts', config, log_on_train=False))
+                run_logger = RunLogger(logger_server.queue, f'repeats={config.repeats} {name}',
+                                       (AvgCoopsMetric('acts', config, log_on_train=False),), train=False)
 
                 for repeat in range(config.repeats):
                     _name = f'r{repeat} {name}'

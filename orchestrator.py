@@ -1,4 +1,5 @@
 import numpy as np
+import multiprocessing as mp
 
 from logger import RunLogger
 from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
@@ -10,26 +11,27 @@ from utils import indices_except, append_dict2dict
 
 class Orchestrator:
 
-    def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, logger: RunLogger):
+    def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, queue: mp.Queue):
         self.cfg = cfg
-        self.logger = logger
-        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space,
-                             cfg=cfg, logger=self.logger) for i in range(cfg.players)]
+        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
         self.mean_elo = MeanElo(cfg.players)
 
-        metrics = [
+        metrics = (
             ActionMap('acts', cfg.players, [agent.label for agent in self.agents], log_on_train=False),
             PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
             CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
-        ]
+        )
         for agent in self.agents:
             # metrics.append(ModelArt(f'{agent.agent_label}_model'))
-            metrics.append(BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False))
-            # metrics.append(BatchAvgMetric(f'{agent.label}_elo', 10, epoch_counter=True))
-            metrics.append(BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False))
+            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False),)
+            metrics += (BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False),)
+            metrics += (BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False),)
             # metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
-        self.logger.init(name, True, *metrics)
+
+        self.logger = RunLogger(queue, name, metrics)
         self.logger.param(cfg.as_dict())
+        for agent in self.agents:
+            agent.set_logger(self.logger)
 
     def __del__(self):
         self.logger.deinit()
