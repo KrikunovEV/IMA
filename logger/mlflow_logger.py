@@ -7,8 +7,8 @@ from logger import commands
 from logger.metric import IMetric
 
 
-def _send(queue: mp.Queue, command, *args, **kwargs):
-    queue.put((command, args, kwargs))
+def _send(queue: mp.Queue, command, instance, *args, **kwargs):
+    queue.put((command, instance, args, kwargs))
 
 
 def load_model_from_artifacts(exp_id: str, run_id: str, state_dict_path: str):
@@ -50,8 +50,12 @@ def _mlflow_worker(message_queue: mp.Queue, experiment_name: str):
     worker = Worker(logger=MlflowClient(), experiment_name=experiment_name)
 
     while True:
-        func, args, kwargs = message_queue.get()
-        if func(worker, *args, **kwargs):
+        cmd_func, instance, args, kwargs = message_queue.get()
+
+        if instance is None:
+            raise Exception(f'Logger: init() was not called yet.')
+
+        if cmd_func(worker, instance, *args, **kwargs):
             break
 
 
@@ -60,11 +64,13 @@ class RunLogger:
 
     def __init__(self, queue: mp.Queue):
         self._queue = queue
-        self._instance = f'{mp.current_process().name}_{RunLogger.INSTANCE_COUNT}'
+        self._instance = None
+        self._id = RunLogger.INSTANCE_COUNT
         RunLogger.INSTANCE_COUNT += 1
 
     def init(self, run_name: str, train: bool, *args: IMetric):
-        _send(self._queue, commands.init, self._instance, run_name, list(args))
+        self._instance = f'{mp.current_process().name}_{self._id}'
+        _send(self._queue, commands.init, self._instance, run_name, args)
         self.set_mode(train)
 
     def set_mode(self, train: bool):
@@ -106,7 +112,7 @@ class LoggerServer:
         self._process.start()
 
     def stop(self):
-        _send(self._queue, commands.stop)
+        _send(self._queue, commands.stop, self._instance)
         self._process.join()
 
     @property
