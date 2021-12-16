@@ -9,6 +9,7 @@ class IZeroSumEloSystem:
 
     def __init__(self, players: int):
         self.players = players
+        self.elo = None
         self.reset()
 
     def reset(self):
@@ -19,7 +20,7 @@ class IZeroSumEloSystem:
         """ rewards.sum() = 0 """
         raise NotImplementedError
 
-    def _update_elo_(self, rewards, estimates):
+    def _update_elo(self, rewards, estimates):
         """ estimates are: VERSUS_PLAYER_ELO (estimated in multiplayer) - CURRENT_PLAYER_ELO """
         # sigmoid
         estimates = 1. / (1. + self.BASE ** (estimates / self.DEL))
@@ -38,10 +39,9 @@ class MeanElo(IZeroSumEloSystem):
 
     def step(self, rewards):
         # Use mean elo of other players to correct your elo
-        elo_sum = np.sum(self.elo)
-        estimates = ((elo_sum - self.elo) / (self.players - 1)) - self.elo  # mean R other - R current
+        estimates = ((np.sum(self.elo) - self.elo) / (self.players - 1)) - self.elo  # mean R other - R current
 
-        self._update_elo_(rewards, estimates)
+        self._update_elo(rewards, estimates)
         return self.elo
 
 
@@ -64,7 +64,7 @@ class SMElo(IZeroSumEloSystem):
                 vs_player = cur_player if i == (self.players - 1) else argind[i + 1]
             estimates[cur_player] += estimates[vs_player]
 
-        self._update_elo_(rewards, estimates)
+        self._update_elo(rewards, estimates)
         return self.elo
 
 

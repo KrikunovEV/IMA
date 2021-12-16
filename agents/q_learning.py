@@ -8,6 +8,7 @@ from config import Config
 from logger import RunLogger
 from memory import ReplayMemory, Transition
 from models.q_learning import Core
+from utils import to_one_hot
 
 
 class Agent:
@@ -43,28 +44,36 @@ class Agent:
         self.obs_history.append(obs)
         self.obs = obs
 
+        state = torch.tensor(self.obs_history, device=self.cfg.device)
+        o_q, d_q = self.model_actual(state)
+        o_q, d_q = o_q[-1], d_q[-1]
+        exploration = torch.rand(1) < self.eps
+        o_action = torch.randint(self.a_space, size=(1,)) if exploration else o_q.argmax().detach().cpu()
+        d_action = torch.randint(self.a_space, size=(1,)) if exploration else d_q.argmax().detach().cpu()
+
+        self.logger.log({f'{self.label}_eps': self.eps})
+        if self.eps > self.cfg.eps_low:
+            self.eps -= self.cfg.eps_decay
+            if self.eps < self.cfg.eps_low:
+                self.eps = self.cfg.eps_low
+
         if len(self.memory) > self.cfg.no_learn_episodes:
-            state = torch.stack([*self.obs_history]).to(self.cfg.device)
-            o_q, d_q = self.model_actual(state)
-            o_q, d_q = o_q[-1], d_q[-1]
-            exploration = torch.rand(1) < self.eps
-            o_action = torch.randint(self.a_space, size=(1,)) if exploration else o_q.argmax().detach().cpu()
-            d_action = torch.randint(self.a_space, size=(1,)) if exploration else d_q.argmax().detach().cpu()
-
-            self.logger.log({f'{self.label}_eps': self.eps})
-            if self.eps > self.cfg.eps_low:
-                self.eps -= self.cfg.eps_decay
-                if self.eps < self.cfg.eps_low:
-                    self.eps = self.cfg.eps_low
-
             self._learn()
-        else:
-            o_action, d_action = torch.randint(self.a_space, size=(2,))
-            o_q, d_q = torch.zeros(self.a_space), torch.zeros(self.a_space)
 
         self.o_action = o_action.item()
         self.d_action = d_action.item()
-        return {'acts': [o_action, d_action], 'policies': [o_q, d_q]}
+        return {self.cfg.actions_key: (to_one_hot(o_action, size=(self.a_space,)),
+                                       to_one_hot(d_action, size=(self.a_space,))),
+                self.cfg.offend_policy_key: o_q, self.cfg.defend_policy_key: d_q}
+
+    def inference(self, obs):
+        self.obs_history.append(obs)
+        state = torch.tensor(self.obs_history, device=self.cfg.device)
+        o_q, d_q = self.model_actual(state)
+        o_action = o_q[-1].argmax().item()
+        d_action = d_q[-1].argmax().item()
+        return {self.cfg.actions_key: (to_one_hot(o_action, size=(self.a_space,)),
+                                       to_one_hot(d_action, size=(self.a_space,)))}
 
     def rewarding(self, reward, next_obs, last):
         self.logger.log({f'{self.label}_reward': reward})
@@ -73,27 +82,19 @@ class Agent:
         if last:
             self.model_target.load_state_dict(self.model_actual.state_dict())
 
-    def inference(self, obs):
-        self.obs_history.append(obs)
-        state = torch.stack([*self.obs_history]).to(self.cfg.device)
-        o_q, d_q = self.model_actual(state)
-        o_action = o_q[-1].argmax().item()
-        d_action = d_q[-1].argmax().item()
-        return {'acts': [o_action, d_action]}
-
     def _clear_history(self):
         for i in range(self.cfg.window):
-            self.obs_history.append(torch.zeros(self.o_space))
+            self.obs_history.append(np.zeros(self.o_space, dtype=np.float32))
 
     def _learn(self):
         data = self.memory.sample()
         batch = Transition(*zip(*data))
 
-        state = torch.stack(batch.state).to(self.cfg.device)
-        o_action = torch.LongTensor(batch.o_action)
-        d_action = torch.LongTensor(batch.d_action)
-        reward = np.array(batch.reward)
-        state_next = torch.stack(batch.next_state).to(self.cfg.device)
+        state = torch.tensor(batch.state, device=self.cfg.device)
+        o_action = torch.LongTensor(batch.o_action).to(self.cfg.device)
+        d_action = torch.LongTensor(batch.d_action).to(self.cfg.device)
+        reward = torch.tensor(batch.reward, device=self.cfg.device)
+        state_next = torch.tensor(batch.next_state, device=self.cfg.device)
 
         o_q, d_q = self.model_actual(state)
         o_q = o_q[torch.arange(self.cfg.window), o_action]

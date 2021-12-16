@@ -7,7 +7,7 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 2
+    epochs: int = 10
     cores: int = 1
     repeats: int = 1
     seed: int = None
@@ -34,6 +34,11 @@ class Config:
     # memory
     capacity: int = 5000
     no_learn_episodes: int = 100
+
+    # keys for logging dictionary
+    actions_key: str = 'acts'
+    offend_policy_key: str = 'offend_policy'
+    defend_policy_key: str = 'defend_policy'
 
     # has to be post-initialized
     device: torch.device = field(init=False)

@@ -3,8 +3,9 @@ import numpy as np
 import seaborn as sn
 import os
 import cv2 as cv
+from utils import greater_divisor
 
-from logger import Metric, BatchMetric, IArtifact
+from logger import Metric, BatchMetric, IArtifact, CooperationTask
 from config import Config
 
 
@@ -80,40 +81,35 @@ class BatchSumAvgMetric(BatchMetric):
         super(BatchSumAvgMetric, self).on_all()
 
 
-class CoopsMetric(IArtifact):
+class CoopsMetric(IArtifact, CooperationTask):
     def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
                  is_global: bool = False):
-        super(CoopsMetric, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
+        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, is_global)
+        CooperationTask.__init__(self)
         self.coops = []
 
     def set_mode(self, train: bool):
         super(CoopsMetric, self).set_mode(train)
         if not train:
-            self.coops.append([0, 0, 0])
+            self.coops.append(0)
 
     def on_log(self, actions):
-        if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
-            self.coops[-1][0] += 1
-        elif actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
-            self.coops[-1][1] += 1
-        elif actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
-            self.coops[-1][2] += 1
+        self.coops[-1] = self.coops[-1] + \
+                         np.array([1 if np.array_equal(actions[:, current], actions[:, neighbor])
+                                   else 0
+                                   for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
 
     def coop_bars(self, data):
-        epochs = np.arange(len(self.coops)) + 1
+        epochs = np.arange(1, len(self.coops) + 1)
         np_coops = np.array(self.coops)
-        fig, ax = plt.subplots(1, 3, figsize=(16, 9), sharey=True)
-        ax[0].set_title('1 2 vs 3')
-        ax[1].set_title('2 3 vs 1')
-        ax[2].set_title('1 3 vs 2')
-        for i in range(3):
-            ax[i].set_xlabel('epoch')
-            ax[i].set_ylabel('# of coops')
-            ax[i].set_ylim(-0.01, 100.01)
-            ax[i].bar(epochs, np_coops[:, i])
-            ax[i].set_xticks(epochs)
-            for e in epochs:
-                ax[i].text(e, np_coops[e - 1, i], f'{np_coops[e - 1, i]}', fontsize=6, ha='center')
+        gd = greater_divisor(np_coops.shape[-1])
+        fig_size = (gd, int(np_coops.shape[-1] / gd))
+        fig, ax = plt.subplots(fig_size[0], fig_size[1], figsize=(16, 9), sharey=True)
+        ax = ax.reshape(-1)
+        for i, (cur, nbr) in enumerate(self.get_cooperation_relation(np_coops.shape[-1]) + 1):
+            self._draw_bars(ax[i], f'{cur}&{nbr}', np_coops[:, i], xticks_step=5)
+        ax = ax.reshape(fig_size)
+
         fig.tight_layout()
         fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
         plt.savefig(fullname)
@@ -122,48 +118,32 @@ class CoopsMetric(IArtifact):
         os.remove(fullname)
 
 
-class AvgCoopsMetric(IArtifact):
+class AvgCoopsMetric(IArtifact, CooperationTask):
     def __init__(self, key: str, cfg: Config, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
                  is_global: bool = False):
-        super(AvgCoopsMetric, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
+        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, is_global)
+        CooperationTask.__init__(self)
+
         self.coops = []
         self.cfg = cfg
 
     def on_log(self, game_actions):
-        coops = []
         for epoch_actions in game_actions:
-            coops.append([0, 0, 0])
+            self.coops.append(0)
             for actions in epoch_actions:
-                if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
-                    coops[-1][0] += 1
-                elif actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
-                    coops[-1][1] += 1
-                elif actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
-                    coops[-1][2] += 1
-        self.coops.append(coops)
+                self.coops[-1] = self.coops[-1] + \
+                                 np.array([1 if np.array_equal(actions[:, current], actions[:, neighbor])
+                                           else 0
+                                           for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
 
     def avg_coop_bars(self, data):
-        avg_coops = np.zeros((self.cfg.epochs, 3), dtype=np.int64)
-        for coops in self.coops:
-            avg_coops += np.array(coops)
-        self.coops = avg_coops / self.cfg.repeats
+        fig, ax = plt.subplots(1, 2, figsize=(16, 9), sharey=True)
+        self._draw_bars(ax[0], 'AVG_COOPS by type', np.mean(self.coops, axis=0),
+                        xticks=self.get_cooperation_relation(self.coops[0].shape[-1]) + 1,
+                        xlabel='cooperation type')
 
-        epochs = np.arange(len(self.coops))
-        np_coops = np.array(self.coops)
-        fig, ax = plt.subplots(1, 3, figsize=(16, 9), sharey=True)
-        ax[0].set_title('1 2 vs 3')
-        ax[1].set_title('2 3 vs 1')
-        ax[2].set_title('1 3 vs 2')
-        for i in range(3):
-            ax[i].set_xlabel('epoch')
-            ax[i].set_ylabel('# of coops')
-            ax[i].set_ylim(-0.01, 100.01)
-            ax[i].bar(epochs + 1, np_coops[:, i])
-            ax[i].set_xticks(epochs[::10] + 1)
-            for j in range(len(epochs[::10])):
-                text = (epochs[::10] + 1)[j]
-                mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
-                ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
+        self._draw_bars(ax[1], 'AVG_COOPS by epoch', np.sum(self.coops, axis=1) / self.cfg.repeats, xticks_step=5)
+
         fig.tight_layout()
         fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
         plt.savefig(fullname)
@@ -185,9 +165,8 @@ class ActionMap(IArtifact):
         self.DM = np.zeros((players, players), dtype=np.int)
 
     def on_log(self, actions):
-        for row, action in enumerate(actions):
-            self.OM[row, action[self.OFFEND]] += 1
-            self.DM[row, action[self.DEFEND]] += 1
+        self.OM += actions[self.OFFEND]
+        self.DM += actions[self.DEFEND]
 
     def action_map(self, data):
         fig, ax = plt.subplots(1, 2, figsize=(16, 9))
@@ -255,3 +234,30 @@ class PolicyViaTime(IArtifact):
 
         self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
         os.remove(fullname)
+
+
+if __name__ == '__main__':
+
+    x = np.linspace(0, 2 * np.pi, 400)
+    y = np.sin(x ** 2)
+
+    fig, axs = plt.subplots(5)
+    axs[0].plot(x, y)
+    axs[0].set_title('Axis [0, 0]')
+    axs[1].plot(x, y, 'tab:orange')
+    axs[1].set_title('Axis [0, 1]')
+    axs[2].plot(x, -y, 'tab:green')
+    axs[2].set_title('Axis [1, 0]')
+    #axs[1, 1].plot(x, -y, 'tab:red')
+    #axs[1, 1].set_title('Axis [1, 1]')
+
+    for ax in axs.flat:
+        ax.set(xlabel='x-label', ylabel='y-label')
+
+    # Hide x labels and tick labels for top plots and y ticks for right plots.
+    for ax in axs.flat:
+        ax.label_outer()
+
+    axs = axs.reshape(-1,2)
+
+    plt.show()

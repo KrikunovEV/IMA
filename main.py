@@ -23,7 +23,8 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
 
     env = OADEnv(players=cfg.players, debug=False)
     logger = RunLogger(queue)
-    orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n), a_space=env.action_space.shape[0],
+    orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
+                                a_space=env.action_space.shape[0],
                                 cfg=cfg, name=name, logger=logger)
 
     choices_eval_to_return = []
@@ -35,7 +36,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
         obs = env.reset()
         for episode in range(cfg.train_episodes):
             choices = orchestrator.act(obs)
-            obs, rewards, _, _ = env.step(choices)
+            obs, rewards = env.step(choices)
             orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
         logger.all()
         if debug:
@@ -49,7 +50,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
             for episode in range(cfg.test_episodes):
                 choices = orchestrator.inference(obs, episode)
                 choices_eval_to_return[-1].append(choices)
-                obs, rewards, _, _ = env.step(choices)
+                obs, rewards = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
         logger.call('action_map', None)
         logger.all()

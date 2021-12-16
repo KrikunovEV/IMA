@@ -1,11 +1,11 @@
-import torch
-import multiprocessing as mp
+import numpy as np
 
 from logger import RunLogger
 from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
 from config import Config
 from agents.q_learning import Agent
 from elo_systems import MeanElo
+from utils import indices_except, append_dict2dict
 
 
 class Orchestrator:
@@ -39,44 +39,39 @@ class Orchestrator:
         for agent in self.agents:
             agent.set_mode(train)
 
-    def act(self, obs):
-        local_obs = self._preprocess(obs)
-        actions, o_policies, d_policies = [], [], []
-        for agent in self.agents:
-            output = agent.act(local_obs)
-            actions.append(output['acts'])
-            o_policies.append(output['policies'][0].detach().cpu().numpy())
-            d_policies.append(output['policies'][1].detach().cpu().numpy())
-        self.logger.log({'acts': actions, 'pvt': (o_policies, d_policies)})
+    def _make_act(self, obs, do_log):
+        obs = self._preprocess(obs)
+        logging_dict = {}
+        actions = np.zeros((2, len(self.agents), len(self.agents)), dtype=np.int32)
+        actions_key = self.cfg.actions_key
+        for agent_id, agent in enumerate(self.agents):
+            output = agent.act(obs) if agent.train else agent.inference(obs)
+            actions[:, agent_id, indices_except(agent_id, self.agents)] = output.pop(actions_key, None)
+            if len(output) > 0:
+                append_dict2dict(output, logging_dict)
+        logging_dict[actions_key] = actions
+
+        if do_log:
+            self.logger.log(logging_dict)
+
         return actions
+
+    def act(self, obs):
+        return self._make_act(obs, True)
+
+    def inference(self, obs, episode):
+        return self._make_act(obs, episode >= self.cfg.window)
 
     def rewarding(self, rewards, next_obs, last: bool):
         elo = self.mean_elo.step(rewards)
-        for i in range(len(elo)):
+
+        for i, _ in enumerate(elo):
             self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
 
-        local_next_obs = self._preprocess(next_obs)
+        next_obs = self._preprocess(next_obs)
         for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, local_next_obs, last)
-
-    def inference(self, obs, episode):
-        local_obs = self._preprocess(obs)
-        actions = []
-        for agent in self.agents:
-            output = agent.inference(local_obs)
-            actions.append(output['acts'])
-
-        if episode >= self.cfg.window:
-            # first 'window' times are zeros
-            self.logger.log({'acts': actions})
-
-        return actions
+            agent.rewarding(reward, next_obs, last)
 
     def _preprocess(self, obs):
-        # obs = torch.from_numpy(obs)
-        # local_obs = []
-        # for i, agent in enumerate(self.agents):
-        #     _obs = torch.cat((obs[i:], obs[:i])).view(-1)
-        #     local_obs.append(_obs)
-        local_obs = torch.from_numpy(obs).view(-1)
-        return local_obs
+        obs = obs.flatten()
+        return obs
