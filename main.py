@@ -52,13 +52,13 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
-        orchestrator.logger.call('action_map', None)
+        orchestrator.logger.call('action_map')
         orchestrator.logger.all()
         if debug:
             print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
-    orchestrator.logger.call('policy_via_time', None)
-    orchestrator.logger.call('coop_bars', None)
+    orchestrator.logger.call('policy_via_time')
+    orchestrator.logger.call('coop_bars')
     orchestrator.logger.param({'spent time': time.time() - start_time})
     return {'to_return': _to_return, 'acts': choices_eval_to_return}
 
@@ -88,7 +88,7 @@ if __name__ == '__main__':
                 run_logger = result['to_return']['run_logger']
                 run_logger.log({'acts': result['acts']})
                 if result['to_return']['last']:
-                    run_logger.call('avg_coop_bars', None)
+                    run_logger.call('avg_coop_bars')
                     run_logger.deinit()
             except Exception as ex:
                 raise ex

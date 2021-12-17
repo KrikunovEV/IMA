@@ -4,14 +4,15 @@ import seaborn as sn
 import os
 import cv2 as cv
 from utils import greater_divisor
+from screeninfo import get_monitors
 
-from logger import Metric, BatchMetric, IArtifact, CooperationTask
+from logger import BatchMetric, IArtifact, CooperationTask
 from config import Config
 
 
 class BatchSumMetric(BatchMetric):
     def __init__(self, key: str, suffix: str = 'sum', log_on_train: bool = True, log_on_eval: bool = True,
-                 epoch_counter: bool = True, is_global: bool = False):
+                 epoch_counter: bool = False, is_global: bool = False):
         super(BatchSumMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self.sum_train = 0
         self.sum_eval = 0
@@ -28,7 +29,7 @@ class BatchSumMetric(BatchMetric):
 
 class BatchAvgMetric(BatchMetric):
     def __init__(self, key: str, avg: int, suffix: str = 'avg', log_on_train: bool = True, log_on_eval: bool = True,
-                 epoch_counter: bool = True, is_global: bool = False):
+                 epoch_counter: bool = False, is_global: bool = False):
         super(BatchAvgMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self.values = []
         self.avg = avg
@@ -36,7 +37,8 @@ class BatchAvgMetric(BatchMetric):
     def on_log(self, value):
         self.values.append(value)
         if len(self.values) == self.avg:
-            self.on_all()
+            super(BatchAvgMetric, self).on_log(np.mean(self.values))
+            self.values = []
 
     def on_all(self):
         if len(self.values) > 0:
@@ -47,7 +49,7 @@ class BatchAvgMetric(BatchMetric):
 
 class BatchSumAvgMetric(BatchMetric):
     def __init__(self, key: str, avg: int, suffix: str = 'sum_avg', log_on_train: bool = True, log_on_eval: bool = True,
-                 epoch_counter: bool = True, is_global: bool = False):
+                 epoch_counter: bool = False, is_global: bool = False):
         super(BatchSumAvgMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
         self.values = []
         self.sum_train = 0
@@ -82,9 +84,9 @@ class BatchSumAvgMetric(BatchMetric):
 
 
 class CoopsMetric(IArtifact, CooperationTask):
-    def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
-                 is_global: bool = False):
-        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, is_global)
+    def __init__(self, key: str, suffix: str = 'coops', log_on_train: bool = True, log_on_eval: bool = True,
+                 log_in_dir: bool = False, is_global: bool = False):
+        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
         CooperationTask.__init__(self)
         self.coops = []
 
@@ -99,31 +101,29 @@ class CoopsMetric(IArtifact, CooperationTask):
                                    else 0
                                    for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
 
-    def coop_bars(self, data):
-        epochs = np.arange(1, len(self.coops) + 1)
+    def coop_bars(self):
         np_coops = np.array(self.coops)
         gd = greater_divisor(np_coops.shape[-1])
         fig_size = (gd, int(np_coops.shape[-1] / gd))
         fig, ax = plt.subplots(fig_size[0], fig_size[1], figsize=(16, 9), sharey=True)
         ax = ax.reshape(-1)
         for i, (cur, nbr) in enumerate(self.get_cooperation_relation(np_coops.shape[-1]) + 1):
-            self._draw_bars(ax[i], f'{cur}&{nbr}', np_coops[:, i], xticks_step=5)
+            self._draw_bars(ax[i], f'{cur}&{nbr}', np_coops[:, i], xticks_step=1)
         ax = ax.reshape(fig_size)
 
         fig.tight_layout()
-        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
+        fullname = f'{self.prepare_name()}.png'
         plt.savefig(fullname)
         plt.close(fig)
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
 
 class AvgCoopsMetric(IArtifact, CooperationTask):
-    def __init__(self, key: str, cfg: Config, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
-                 is_global: bool = False):
-        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, is_global)
+    def __init__(self, key: str, cfg: Config, suffix: str = 'avg_coops', log_on_train: bool = True,
+                 log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
+        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
         CooperationTask.__init__(self)
-
         self.coops = []
         self.cfg = cfg
 
@@ -136,19 +136,19 @@ class AvgCoopsMetric(IArtifact, CooperationTask):
                                            else 0
                                            for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
 
-    def avg_coop_bars(self, data):
+    def avg_coop_bars(self):
         fig, ax = plt.subplots(1, 2, figsize=(16, 9), sharey=True)
         self._draw_bars(ax[0], 'AVG_COOPS by type', np.mean(self.coops, axis=0),
                         xticks=self.get_cooperation_relation(self.coops[0].shape[-1]) + 1,
                         xlabel='cooperation type')
 
-        self._draw_bars(ax[1], 'AVG_COOPS by epoch', np.sum(self.coops, axis=1) / self.cfg.repeats, xticks_step=5)
+        self._draw_bars(ax[1], 'AVG_COOPS by epoch', np.sum(self.coops, axis=1) / self.cfg.repeats, xticks_step=1)
 
         fig.tight_layout()
-        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_coops.png')
+        fullname = f'{self.prepare_name()}.png'
         plt.savefig(fullname)
         plt.close(fig)
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
 
@@ -201,10 +201,15 @@ class PolicyViaTime(IArtifact):
         self.filenames = []
         self.frame = 0
 
+        self.resolution = None
+        for m in get_monitors():
+            if m.is_primary:
+                self.resolution = (m.width, m.height)
+                break
+
     def on_log(self, data):
         self.frame += 1
         if self.frame % self.frames_skip == 0:
-
             offends, defends = data
             fig, ax = plt.subplots(2, self.players, figsize=(16, 9), sharex=True, sharey=True)
             for i, (label, offend, defend) in enumerate(zip(self.labels, offends, defends)):
@@ -224,14 +229,14 @@ class PolicyViaTime(IArtifact):
 
     def policy_via_time(self):
         fullname = f'{self.prepare_name()}.avi'
-        writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, (1600, 900))
+        writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, self.resolution)
 
         for i, filename in enumerate(self.filenames):
             writer.write(cv.imread(filename))
             os.remove(filename)
         writer.release()
 
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
+        self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
 

@@ -22,9 +22,9 @@ class Orchestrator:
             CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
         )
         for agent in self.agents:
-            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False),
-                        BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False),
-                        BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False),)
+            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10),
+                        BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False, epoch_counter=True),
+                        BatchAvgMetric(f'{agent.label}_loss', 10),)
 
         self.logger = RunLogger(queue, name, metrics)
         self.logger.param(cfg.as_dict())
@@ -48,7 +48,7 @@ class Orchestrator:
 
     def rewarding(self, rewards, next_obs, last: bool):
         for i, elo in enumerate(self.mean_elo.step(rewards)):
-            self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
+            self.logger.log({f'{self.agents[i].label}_elo': elo})
 
         next_obs = self._preprocess(next_obs)
         for agent, reward in zip(self.agents, rewards):

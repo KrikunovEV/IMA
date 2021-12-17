@@ -4,6 +4,13 @@ def init(worker, instance: str, run_name: str, metrics: tuple):
     if len(metrics) == 0:
         raise Exception(f'Logger: .init() has to input at least one \'metric\'.')
 
+    names = []
+    for metric in metrics:
+        if metric._suffix_key in names:
+            raise Exception(f'Logger: .init() got two metrics with the same suffix + key: {metric._suffix_key}.')
+        else:
+            names.append(metric._suffix_key)
+
     run_id = worker.create_run(run_name)
     worker.set_tag(run_id)
     for metric in metrics:
@@ -28,10 +35,10 @@ def all(worker, instance: str):
         metric.on_all()
 
 
-def call(worker, instance: str, func_name: str, args):
+def call(worker, instance: str, func_name: str, *args, **kwargs):
     for metric in worker.instances[instance]['metrics']:
         if hasattr(metric, f'{func_name}'):
-            getattr(metric, f'{func_name}')(args)
+            getattr(metric, f'{func_name}')(*args, **kwargs)
 
 
 def param(worker, instance: str, data: dict):

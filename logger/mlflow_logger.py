@@ -79,8 +79,8 @@ class RunLogger:
     def all(self):
         _send(self._queue, commands.all, self._instance)
 
-    def call(self, func: str, data):
-        _send(self._queue, commands.call, self._instance, func, data)
+    def call(self, func: str, *args, **kwargs):
+        _send(self._queue, commands.call, self._instance, func, *args, **kwargs)
 
     def param(self, params: dict):
         _send(self._queue, commands.param, self._instance, params)
