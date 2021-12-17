@@ -11,7 +11,7 @@ class IMetric:
     POSTFIX_EVAL = '_eval'
 
     def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
-                 epoch_counter: bool = True, is_global: bool = False):
+                 epoch_counter: bool = False, is_global: bool = False):
         if not log_on_eval and not log_on_train:
             raise Exception(f'Both log_on_train and log_on_eval can not be False')
 
@@ -72,6 +72,10 @@ class IMetric:
     def is_global(self):
         return self._is_global
 
+    @property
+    def logger(self):
+        return self._logger
+
     def on_log(self, value):
         raise NotImplementedError
 
@@ -86,11 +90,11 @@ class Metric(IMetric):
         super().__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
 
     def on_log(self, value):
-        self._logger.log_metric(run_id=self._run_id,
-                                key=self._fullname,
-                                value=value,
-                                timestamp=get_time_ms(),
-                                step=self._get_step())
+        self.logger.log_metric(run_id=self._run_id,
+                               key=self._fullname,
+                               value=value,
+                               timestamp=get_time_ms(),
+                               step=self._get_step())
 
     def on_all(self):
         pass
@@ -117,5 +121,5 @@ class BatchMetric(IMetric):
 
     def on_all(self):
         if len(self._metrics) > 0:
-            self._logger.log_batch(run_id=self._run_id, metrics=self._metrics)
+            self.logger.log_batch(run_id=self._run_id, metrics=self._metrics)
             self._metrics = []

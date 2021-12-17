@@ -23,7 +23,7 @@ def set_mode(worker, instance: str, mode: bool):
         metric.set_mode(mode)
 
 
-def on_all(worker, instance: str):
+def all(worker, instance: str):
     for metric in worker.instances[instance]['metrics']:
         metric.on_all()
 

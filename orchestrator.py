@@ -22,11 +22,9 @@ class Orchestrator:
             CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
         )
         for agent in self.agents:
-            # metrics.append(ModelArt(f'{agent.agent_label}_model'))
-            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False),)
-            metrics += (BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False),)
-            metrics += (BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False),)
-            # metrics.append(Metric(f'{agent.agent_label}_eps', epoch_counter=False, log_on_eval=False))
+            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10, epoch_counter=False),
+                        BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False),
+                        BatchAvgMetric(f'{agent.label}_loss', 10, epoch_counter=False),)
 
         self.logger = RunLogger(queue, name, metrics)
         self.logger.param(cfg.as_dict())
@@ -38,8 +36,23 @@ class Orchestrator:
 
     def set_mode(self, train: bool = True):
         self.logger.set_mode(train)
+        self.mean_elo.reset()
         for agent in self.agents:
             agent.set_mode(train)
+
+    def act(self, obs):
+        return self._make_act(obs, True)
+
+    def inference(self, obs, episode):
+        return self._make_act(obs, episode >= self.cfg.window)
+
+    def rewarding(self, rewards, next_obs, last: bool):
+        for i, elo in enumerate(self.mean_elo.step(rewards)):
+            self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
+
+        next_obs = self._preprocess(next_obs)
+        for agent, reward in zip(self.agents, rewards):
+            agent.rewarding(reward, next_obs, last)
 
     def _make_act(self, obs, do_log):
         obs = self._preprocess(obs)
@@ -57,22 +70,6 @@ class Orchestrator:
             self.logger.log(logging_dict)
 
         return actions
-
-    def act(self, obs):
-        return self._make_act(obs, True)
-
-    def inference(self, obs, episode):
-        return self._make_act(obs, episode >= self.cfg.window)
-
-    def rewarding(self, rewards, next_obs, last: bool):
-        elo = self.mean_elo.step(rewards)
-
-        for i, _ in enumerate(elo):
-            self.logger.log({f'{self.agents[i].label}_elo': elo[i]})
-
-        next_obs = self._preprocess(next_obs)
-        for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, next_obs, last)
 
     def _preprocess(self, obs):
         obs = obs.flatten()

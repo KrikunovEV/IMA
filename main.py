@@ -19,7 +19,8 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
+    if debug:
+        print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
 
     env = OADEnv(players=cfg.players, debug=False)
     orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
@@ -73,29 +74,22 @@ if __name__ == '__main__':
         runners = []
 
         for i, (name, config) in enumerate(configs.items()):
+            run_logger = RunLogger(logger_server.queue, f'repeats={config.repeats} {name}',
+                                   (AvgCoopsMetric('acts', config, log_on_train=False),), train=False)
 
-            if config.repeats > 1:
-                run_logger = RunLogger(logger_server.queue, f'repeats={config.repeats} {name}',
-                                       (AvgCoopsMetric('acts', config, log_on_train=False),), train=False)
-
-                for repeat in range(config.repeats):
-                    _name = f'r{repeat} {name}'
-                    to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats}
-                    runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
-            else:
-                to_return = None
-                runners.append(executor.submit(env_runner, name, config, logger_server.queue, to_return))
+            for repeat in range(config.repeats):
+                _name = f'r{repeat} {name}' if config.repeats > 1 else name
+                to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats}
+                runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:
                 result = runner.result()
-                to_return = result['to_return']
-                if to_return is not None:
-                    run_logger = to_return['run_logger']
-                    run_logger.log({'acts': result['acts']})
-                    if to_return['last']:
-                        run_logger.call('avg_coop_bars', None)
-                        run_logger.deinit()
+                run_logger = result['to_return']['run_logger']
+                run_logger.log({'acts': result['acts']})
+                if result['to_return']['last']:
+                    run_logger.call('avg_coop_bars', None)
+                    run_logger.deinit()
             except Exception as ex:
                 raise ex
 

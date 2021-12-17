@@ -56,10 +56,6 @@ def _mlflow_worker(message_queue: mp.Queue, experiment_name: str):
 
     while True:
         cmd_func, instance, args, kwargs = message_queue.get()
-
-        if instance is None:
-            raise Exception(f'Logger: init() was not called yet.')
-
         if cmd_func(worker, instance, *args, **kwargs):
             break
 
@@ -81,7 +77,7 @@ class RunLogger:
         _send(self._queue, commands.log, self._instance, data)
 
     def all(self):
-        _send(self._queue, commands.on_all, self._instance)
+        _send(self._queue, commands.all, self._instance)
 
     def call(self, func: str, data):
         _send(self._queue, commands.call, self._instance, func, data)

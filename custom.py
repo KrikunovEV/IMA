@@ -157,8 +157,8 @@ class ActionMap(IArtifact):
     DEFEND: int = 1
 
     def __init__(self, key: str, players: int, labels: list, suffix: str = '', log_on_train: bool = True,
-                 log_on_eval: bool = True, is_global: bool = False):
-        super(ActionMap, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
+                 log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
+        super(ActionMap, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
         self.players = players
         self.labels = labels
         self.OM = np.zeros((players, players), dtype=np.int)
@@ -168,7 +168,7 @@ class ActionMap(IArtifact):
         self.OM += actions[self.OFFEND]
         self.DM += actions[self.DEFEND]
 
-    def action_map(self, data):
+    def action_map(self):
         fig, ax = plt.subplots(1, 2, figsize=(16, 9))
         ax[0].set_title('offends heatmap')
         ax[1].set_title('defends heatmap')
@@ -178,10 +178,10 @@ class ActionMap(IArtifact):
                    ax=ax[1], square=True, cbar=False, annot=True, fmt='d')
         fig.tight_layout()
 
-        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}_{self._dest_dir}.png')
+        fullname = f'{self.prepare_name()}.png'
         plt.savefig(fullname)
         plt.close(fig)
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
         self.OM = np.zeros((self.players, self.players), dtype=np.int)
@@ -190,41 +190,40 @@ class ActionMap(IArtifact):
 
 class PolicyViaTime(IArtifact):
 
-    def __init__(self, key: str, players: int, labels: list, suffix: str = '', log_on_train: bool = True,
-                 log_on_eval: bool = True, is_global: bool = False):
-        super(PolicyViaTime, self).__init__(key, suffix, log_on_train, log_on_eval, is_global)
+    def __init__(self, key: str, players: int, labels: list, frames_skip: int = 25, suffix: str = '',
+                 log_on_train: bool = True, log_on_eval: bool = True, log_in_dir: bool = False,
+                 is_global: bool = False):
+        super(PolicyViaTime, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
         self.players = players
         self.labels = labels
+        self.ticks = [''.join(filter(lambda i: i.isdigit(), label)) for label in labels]
+        self.frames_skip = frames_skip
         self.filenames = []
         self.frame = 0
 
     def on_log(self, data):
         self.frame += 1
-        if self.frame % 50 == 0:
-            a_policies, d_policies = data
-            n = len(self.labels)
-            fig, ax = plt.subplots(2, n, figsize=(16, 9), sharex=True, sharey=True)
-            for i in range(n):
-                ax[0][i].set_title(f'{self.labels[i]} agent\'s offend policy')
-                ax[1][i].set_title(f'{self.labels[i]} agent\'s defend policy')
-                ax[0][i].set_ylim(-0.01, 1.01)
-                ax[1][i].set_ylim(-0.01, 1.01)
-                ax[0][i].set_xticks([int(label[0]) for label in self.labels], self.labels)
-                ax[1][i].set_xticks([int(label[0]) for label in self.labels], self.labels)
-                colors = ['b' for _ in range(n)]
-                colors[np.argmax(a_policies[i])] = 'r'
-                ax[0][i].bar(np.arange(n) + 1, a_policies[i], color=colors)
-                colors = ['b' for _ in range(n)]
-                colors[np.argmax(d_policies[i])] = 'r'
-                ax[1][i].bar(np.arange(n) + 1, d_policies[i], color=colors)
+        if self.frame % self.frames_skip == 0:
+
+            offends, defends = data
+            fig, ax = plt.subplots(2, self.players, figsize=(16, 9), sharex=True, sharey=True)
+            for i, (label, offend, defend) in enumerate(zip(self.labels, offends, defends)):
+                self._draw(ax[0][i], f'{label} agent offend', offend)
+                self._draw(ax[1][i], f'{label} agent defend', defend)
             fig.tight_layout()
-            fullname = os.path.join(self._tmp_dir, f'{self._salt}_{len(self.filenames)}.png')
-            self.filenames.append(fullname)
-            plt.savefig(fullname)
+            filename = os.path.join(self._tmp_dir, f'pvt_{len(self.filenames)}.png')
+            self.filenames.append(filename)
+            plt.savefig(filename)
             plt.close(fig)
 
-    def policy_via_time(self, data):
-        fullname = os.path.join(self._tmp_dir, f'{self._salt}_{self._fullname}.avi')
+    def _draw(self, ax, title, values):
+        ax.set_title(title)
+        ax.set_ylim((-0.01, 1.01) if np.sum(values) == 1. else None)
+        ax.set_xticks(self.ticks, self.labels)
+        ax.bar(self.ticks, values, color=['b' if i != np.argmax(values) else 'r' for i in range(self.players)])
+
+    def policy_via_time(self):
+        fullname = f'{self.prepare_name()}.avi'
         writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, (1600, 900))
 
         for i, filename in enumerate(self.filenames):
@@ -232,7 +231,7 @@ class PolicyViaTime(IArtifact):
             os.remove(filename)
         writer.release()
 
-        self._logger.log_artifact(run_id=self._run_id, local_path=fullname)
+        self._logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
 
