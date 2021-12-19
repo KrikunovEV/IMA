@@ -22,8 +22,8 @@ class CustomMetric(Metric):
 
 
 def test(queue: mp.Queue, i):
-    _logger = RunLogger(queue)
-    _logger.init(f'{i}', True, Metric('r'), CustomMetric('a'))
+    _logger = RunLogger(queue, f'{i}', (Metric('r'),
+                                        CustomMetric('a'),))
     _logger.param({'time': 0.5})
     [_logger.log({'r': i + j}) for j in range(10)]
     [_logger.log({'a': i * j}) for j in range(10)]
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     logger_server.start()
 
     with ProcessPoolExecutor(max_workers=4) as executor:
-        runners = [executor.submit(test, logger_server.queue, game) for game in range(1)]
+        runners = [executor.submit(test, logger_server.queue, game) for game in range(5)]
 
         for counter, runner in enumerate(as_completed(runners)):
             try:

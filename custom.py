@@ -6,7 +6,7 @@ import cv2 as cv
 from utils import greater_divisor
 from screeninfo import get_monitors
 
-from logger import BatchMetric, IArtifact, CooperationTask
+from logger import BatchMetric, IArtifact
 from config import Config
 
 
@@ -81,6 +81,40 @@ class BatchSumAvgMetric(BatchMetric):
             super(BatchSumAvgMetric, self).on_log(_sum)
             self.values = []
         super(BatchSumAvgMetric, self).on_all()
+
+
+class CooperationTask:
+    def __init__(self):
+        self._cooperation_relation = None
+
+    def get_cooperation_relation(self, shape):
+        if self._cooperation_relation is None:
+            indices = np.arange(shape)
+            self._cooperation_relation = np.array([(current, neighbor)
+                                                   for current in indices for neighbor in indices[current + 1:]])
+        return self._cooperation_relation
+
+    @staticmethod
+    def _draw_bars(ax, title, x, xticks=None, xticks_step=1, ylim=(-0.01, 100.01), xlabel='epoch', ylabel='# of coops'):
+        num_x = np.arange(1, x.size + 1)
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(ylim)
+        ax.bar(num_x, x)
+        ax.set_xticks(num_x[::xticks_step])
+        if xticks is not None:
+            ax.set_xticklabels(xticks)
+
+        # for j in range(len(num_x[::10])):
+        #     text = (num_x[::10])[j]
+        #     mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
+        #     ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
+
+        # for j in range(len(epochs[::10])):
+        #     text = (epochs[::10] + 1)[j]
+        #     mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
+        #     ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
 
 
 class CoopsMetric(IArtifact, CooperationTask):
@@ -211,36 +245,31 @@ class PolicyViaTime(IArtifact):
         self.frame += 1
         if self.frame % self.frames_skip == 0:
             offends, defends = data
-            fig, ax = plt.subplots(2, self.players, figsize=(self.resolution[0] / 100., self.resolution[1] / 100.),
+            fig, ax = plt.subplots(self.players, 2, figsize=(self.resolution[0] / 100., self.resolution[1] / 100.),
                                    sharex=True, sharey=True)
             for i, (label, offend, defend) in enumerate(zip(self.labels, offends, defends)):
-                self._draw(ax[0][i], f'{label} agent offend', offend)
-                self._draw(ax[1][i], f'{label} agent defend', defend)
+                ticks = self.ticks[:i] + self.ticks[i + 1:]
+                labels = self.labels[:i] + self.labels[i + 1:]
+                self._draw(ax[i][0], f'{label} agent offend', offend, ticks, labels)
+                self._draw(ax[i][1], f'{label} agent defend', defend, ticks, labels)
             fig.tight_layout()
             filename = os.path.join(self._tmp_dir, f'pvt_{len(self.filenames)}.png')
             self.filenames.append(filename)
             plt.savefig(filename)
             plt.close(fig)
 
-    def _draw(self, ax, title, values):
+    def _draw(self, ax, title, values, ticks, labels):
         ax.set_title(title)
-        ax.set_ylim((-0.01, 1.01) if np.sum(values) == 1. else None)
-        ax.set_xticks(self.ticks, self.labels)
-        print(['b' if i != np.argmax(values) else 'r' for i in range(self.players)])
-        print(values)
-        print(self.ticks)
-        ax.bar(self.ticks, values, color='r')
+        ax.set_ylim(-0.01, 1.01)
+        ax.set_xticks(ticks, labels)
+        ax.bar(ticks, values, color=['b' if i != np.argmax(values) else 'r' for i in range(len(values))])
 
     def policy_via_time(self):
         fullname = f'{self.prepare_name()}.avi'
         writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, self.resolution)
 
         for i, filename in enumerate(self.filenames):
-            image = cv.imread(filename)
-            print(image.shape)
-            cv.imshow('', image)
-            cv.waitKey(0)
-            writer.write(image)
+            writer.write(cv.imread(filename))
             os.remove(filename)
         writer.release()
 

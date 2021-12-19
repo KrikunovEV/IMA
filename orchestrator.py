@@ -18,7 +18,7 @@ class Orchestrator:
 
         metrics = (
             ActionMap('acts', cfg.players, [agent.label for agent in self.agents], log_on_train=False),
-            PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
+            # PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
             CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
         )
         for agent in self.agents:
