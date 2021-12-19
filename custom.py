@@ -196,7 +196,7 @@ class PolicyViaTime(IArtifact):
         super(PolicyViaTime, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
         self.players = players
         self.labels = labels
-        self.ticks = [''.join(filter(lambda i: i.isdigit(), label)) for label in labels]
+        self.ticks = [int(''.join(filter(lambda i: i.isdigit(), label))) for label in labels]
         self.frames_skip = frames_skip
         self.filenames = []
         self.frame = 0
@@ -211,7 +211,8 @@ class PolicyViaTime(IArtifact):
         self.frame += 1
         if self.frame % self.frames_skip == 0:
             offends, defends = data
-            fig, ax = plt.subplots(2, self.players, figsize=(16, 9), sharex=True, sharey=True)
+            fig, ax = plt.subplots(2, self.players, figsize=(self.resolution[0] / 100., self.resolution[1] / 100.),
+                                   sharex=True, sharey=True)
             for i, (label, offend, defend) in enumerate(zip(self.labels, offends, defends)):
                 self._draw(ax[0][i], f'{label} agent offend', offend)
                 self._draw(ax[1][i], f'{label} agent defend', defend)
@@ -225,14 +226,21 @@ class PolicyViaTime(IArtifact):
         ax.set_title(title)
         ax.set_ylim((-0.01, 1.01) if np.sum(values) == 1. else None)
         ax.set_xticks(self.ticks, self.labels)
-        ax.bar(self.ticks, values, color=['b' if i != np.argmax(values) else 'r' for i in range(self.players)])
+        print(['b' if i != np.argmax(values) else 'r' for i in range(self.players)])
+        print(values)
+        print(self.ticks)
+        ax.bar(self.ticks, values, color='r')
 
     def policy_via_time(self):
         fullname = f'{self.prepare_name()}.avi'
         writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, self.resolution)
 
         for i, filename in enumerate(self.filenames):
-            writer.write(cv.imread(filename))
+            image = cv.imread(filename)
+            print(image.shape)
+            cv.imshow('', image)
+            cv.waitKey(0)
+            writer.write(image)
             os.remove(filename)
         writer.release()
 

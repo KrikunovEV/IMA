@@ -74,11 +74,11 @@ if __name__ == '__main__':
         runners = []
 
         for i, (name, config) in enumerate(configs.items()):
-            run_logger = RunLogger(logger_server.queue, f'repeats={config.repeats} {name}',
+            run_logger = RunLogger(logger_server.queue, f'{name} (repeats={config.repeats})',
                                    (AvgCoopsMetric('acts', config, log_on_train=False),), train=False)
 
             for repeat in range(config.repeats):
-                _name = f'r{repeat} {name}' if config.repeats > 1 else name
+                _name = f'{name} (r={repeat})' if config.repeats > 1 else name
                 to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats}
                 runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
 

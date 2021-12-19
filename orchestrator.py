@@ -68,6 +68,9 @@ class Orchestrator:
 
         if do_log:
             self.logger.log(logging_dict)
+            if self.cfg.offend_policy_key in logging_dict and self.cfg.defend_policy_key in logging_dict:
+                self.logger.log({'pvt': (logging_dict[self.cfg.offend_policy_key],
+                                         logging_dict[self.cfg.defend_policy_key])})
 
         return actions
 

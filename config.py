@@ -7,13 +7,13 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 10
+    epochs: int = 1
     cores: int = 1
     repeats: int = 1
     seed: int = None
 
     # train
-    train_episodes: int = 1000
+    train_episodes: int = 100
     gamma: float = 0.99
 
     # exploration
