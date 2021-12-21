@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 
-from models.dummy import CoreDQN
+from agents.A2C.model import CoreDQN
 from config import Config
 from rl import Choice, Uniform, Argmax
 from logger import RunLogger
@@ -62,6 +62,7 @@ class Agent:
         o_logits, d_logits = self.model_actual(obs)
         # o_policy = functional.softmax(o_logits, dim=-1)
         # d_policy = functional.softmax(d_logits, dim=-1)
+        # np.random.choice(policy.shape[0], 1, False, p=policy.detach().cpu().numpy())[0]
         if self.train and random.random() < self.eps:
             a_action = self.act_uniform(policy=o_logits)
             d_action = self.act_uniform(policy=d_logits)

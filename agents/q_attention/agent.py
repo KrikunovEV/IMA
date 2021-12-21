@@ -7,7 +7,7 @@ import numpy as np
 from config import Config
 from logger import RunLogger
 from memory import ReplayMemory, Transition
-from models.q_attention import Core
+from agents.q_attention.model import Core
 from utils import to_one_hot
 
 
