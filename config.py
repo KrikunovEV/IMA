@@ -7,10 +7,11 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 1
+    epochs: int = 2
     cores: int = 1
     repeats: int = 1
     seed: int = None
+    algorithm: Union[str, tuple] = 'q_learning'
 
     # train
     train_episodes: int = 100
@@ -35,10 +36,15 @@ class Config:
     capacity: int = 5000
     no_learn_episodes: int = 100
 
-    # keys for logging dictionary
+    # keys for logging
     actions_key: str = 'acts'
+    reward_key: str = 'reward'
+    elo_key: str = 'elo'
+    loss_key: str = 'loss'
+    eps_key: str = 'eps'
     offend_policy_key: str = 'offend_policy'
     defend_policy_key: str = 'defend_policy'
+    pvt_key: str = 'pvt'
 
     # has to be post-initialized
     device: torch.device = field(init=False)

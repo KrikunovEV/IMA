@@ -54,7 +54,7 @@ class Agent:
         o_action = torch.randint(self.a_space, size=(1,)) if exploration else o_q.argmax().detach().cpu()
         d_action = torch.randint(self.a_space, size=(1,)) if exploration else d_q.argmax().detach().cpu()
 
-        self.logger.log({f'{self.label}_eps': self.eps})
+        self.logger.log({f'{self.label}_{self.cfg.eps_key}': self.eps})
         if self.eps > self.cfg.eps_low:
             self.eps -= self.cfg.eps_decay
             if self.eps < self.cfg.eps_low:
@@ -79,7 +79,7 @@ class Agent:
                                        to_one_hot(d_action, size=(self.a_space,)))}
 
     def rewarding(self, reward, next_obs, last):
-        self.logger.log({f'{self.label}_reward': reward})
+        self.logger.log({f'{self.label}_{self.cfg.reward_key}': reward})
         if self.train:
             self.memory.push(self.obs, self.o_action, self.d_action, next_obs, reward)
         if last:
@@ -124,4 +124,4 @@ class Agent:
         for param in self.model_actual.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-        self.logger.log({f'{self.label}_loss': loss.item()})
+        self.logger.log({f'{self.label}_{self.cfg.loss_key}': loss.item()})

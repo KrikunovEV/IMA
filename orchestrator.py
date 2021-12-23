@@ -4,7 +4,7 @@ import multiprocessing as mp
 from logger import RunLogger
 from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
 from config import Config
-from agents.q_learning import Agent
+from agents import get_agent_module
 from elo_systems import MeanElo
 from utils import indices_except, append_dict2dict
 
@@ -13,18 +13,22 @@ class Orchestrator:
 
     def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, queue: mp.Queue):
         self.cfg = cfg
-        self.agents = [Agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
         self.mean_elo = MeanElo(cfg.players)
 
+        agent = get_agent_module(cfg.algorithm)
+        self.agents = [agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
+
         metrics = (
-            ActionMap('acts', cfg.players, [agent.label for agent in self.agents], log_on_train=False),
-            # PolicyViaTime('pvt', cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
-            CoopsMetric('acts', name, log_on_train=False, is_global=True)  # is_global=True to view in global run
+            ActionMap(cfg.actions_key, cfg.players, [agent.label for agent in self.agents], log_on_train=False),
+            # PolicyViaTime(cfg.pvt_key, cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
+            CoopsMetric(cfg.actions_key, name, log_on_train=False, is_global=True)
         )
         for agent in self.agents:
-            metrics += (BatchSumAvgMetric(f'{agent.label}_reward', 10),
-                        BatchAvgMetric(f'{agent.label}_elo', 10, log_on_train=False, epoch_counter=True),
-                        BatchAvgMetric(f'{agent.label}_loss', 10),)
+            metrics += (BatchSumAvgMetric(f'{agent.label}_{cfg.reward_key}', 10),
+                        BatchAvgMetric(f'{agent.label}_{cfg.elo_key}', 10, log_on_train=False, epoch_counter=True),
+                        BatchAvgMetric(f'{agent.label}_{cfg.loss_key}', 10),
+                        # BatchAvgMetric(f'{agent.label}_{cfg.eps_key}', 10),
+                        )
 
         self.logger = RunLogger(queue, name, metrics)
         self.logger.param(cfg.as_dict())
@@ -48,7 +52,7 @@ class Orchestrator:
 
     def rewarding(self, rewards, next_obs, last: bool):
         for i, elo in enumerate(self.mean_elo.step(rewards)):
-            self.logger.log({f'{self.agents[i].label}_elo': elo})
+            self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
 
         next_obs = self._preprocess(next_obs)
         for agent, reward in zip(self.agents, rewards):
@@ -69,8 +73,8 @@ class Orchestrator:
         if do_log:
             self.logger.log(logging_dict)
             if self.cfg.offend_policy_key in logging_dict and self.cfg.defend_policy_key in logging_dict:
-                self.logger.log({'pvt': (logging_dict[self.cfg.offend_policy_key],
-                                         logging_dict[self.cfg.defend_policy_key])})
+                self.logger.log({self.cfg.pvt_key: (logging_dict[self.cfg.offend_policy_key],
+                                                    logging_dict[self.cfg.defend_policy_key])})
 
         return actions
 

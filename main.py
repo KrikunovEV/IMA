@@ -75,7 +75,7 @@ if __name__ == '__main__':
 
         for i, (name, config) in enumerate(configs.items()):
             run_logger = RunLogger(logger_server.queue, f'{name} (repeats={config.repeats})',
-                                   (AvgCoopsMetric('acts', config, log_on_train=False),), train=False)
+                                   (AvgCoopsMetric(config.actions_key, config, log_on_train=False),), train=False)
 
             for repeat in range(config.repeats):
                 _name = f'{name} (r={repeat})' if config.repeats > 1 else name

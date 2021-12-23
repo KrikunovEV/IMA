@@ -6,6 +6,7 @@ from logger.metric import IMetric
 
 
 class IArtifact(IMetric):
+    TEMP_DIR = '_temp'
 
     def __init__(self, key: str, suffix: str = '', log_on_train: bool = True, log_on_eval: bool = True,
                  log_in_dir: bool = False, is_global: bool = False):
@@ -13,8 +14,12 @@ class IArtifact(IMetric):
         super().__init__(key, suffix, log_on_train, log_on_eval, True, is_global)
         self.dest_dir = ''
         self._log_in_dir = log_in_dir
-        self._tmp_dir = '_temp'
-        os.makedirs(self._tmp_dir, exist_ok=True)
+
+        while True:
+            self._tmp_dir = os.path.join(IArtifact.TEMP_DIR, f'{torch.randint(1000000, size=(1,)).item()}')
+            if not os.path.exists(self._tmp_dir):
+                os.makedirs(self._tmp_dir, exist_ok=True)
+                break
 
     def set_mode(self, train: bool):
         if self._train == train:
