@@ -60,7 +60,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
     orchestrator.logger.call('policy_via_time')
     orchestrator.logger.call('coop_bars')
     orchestrator.logger.param({'spent time': time.time() - start_time})
-    return {'to_return': _to_return, 'acts': choices_eval_to_return}
+    return {'to_return': _to_return, cfg.actions_key: choices_eval_to_return}
 
 
 if __name__ == '__main__':
@@ -79,14 +79,15 @@ if __name__ == '__main__':
 
             for repeat in range(config.repeats):
                 _name = f'{name} (r={repeat})' if config.repeats > 1 else name
-                to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats}
+                to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats, 'config': config}
                 runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
 
         for counter, runner in enumerate(as_completed(runners)):
             try:
                 result = runner.result()
                 run_logger = result['to_return']['run_logger']
-                run_logger.log({'acts': result['acts']})
+                config = result['to_return']['config']
+                run_logger.log({config.actions_key: result[config.actions_key]})
                 if result['to_return']['last']:
                     run_logger.call('avg_coop_bars')
                     run_logger.deinit()
