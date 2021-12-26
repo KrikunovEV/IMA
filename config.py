@@ -7,15 +7,17 @@ import torch
 class Config:
     # common
     players: int = 3
-    epochs: int = 2
-    cores: int = 1
-    repeats: int = 1
+    epochs: int = 10
+    cores: int = 2
+    repeats: int = 10
     seed: int = None
-    algorithm: Union[str, tuple] = 'q_learning'
+    algorithm: Union[str, tuple] = 'a2c_recurrent'
+    finite_episodes: Union[bool, tuple] = (True, False)
 
     # train
-    train_episodes: int = 100
+    train_episodes: int = 1000
     gamma: float = 0.99
+    steps: int = 100  # TD update
 
     # exploration
     eps_high: float = 0.9
@@ -30,7 +32,7 @@ class Config:
 
     # recurrent
     h_space: Union[int, tuple] = 32
-    window: Union[int, tuple] = 10
+    window: Union[int, tuple] = 16  # attention/transformer
 
     # memory
     capacity: int = 5000
@@ -55,6 +57,8 @@ class Config:
         eps_decay = (self.eps_high - self.eps_low) / (self.epochs * self.train_episodes * self.eps_episodes_ratio)
         self.set('eps_decay', eps_decay)
 
+        self._check_conflicts()
+
     def set(self, param: str, value):
         if param in self.__annotations__.keys():
             object.__setattr__(self, param, value)
@@ -63,6 +67,12 @@ class Config:
 
     def as_dict(self):
         return asdict(self)
+
+    def _check_conflicts(self):
+        if self.algorithm == 'a2c_recurrent':
+            if self.steps < self.test_episodes:
+                raise Exception(f'{self.algorithm}: "steps" ({self.steps}) has to be equal '
+                                f'or higher than "test_episodes" ({self.test_episodes}) due to recurrence')
 
     @staticmethod
     def init():

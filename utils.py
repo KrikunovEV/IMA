@@ -19,9 +19,9 @@ def timer(func):
 def append_dict2dict(input_dict, output_dict):
     for key in input_dict:
         if key in output_dict:
-            output_dict[key].append(input_dict[key].detach().numpy())
+            output_dict[key].append(input_dict[key])
         else:
-            output_dict[key] = [input_dict[key].detach().numpy()]
+            output_dict[key] = [input_dict[key]]
 
 
 def to_one_hot(index, size, is_numpy: bool = True):

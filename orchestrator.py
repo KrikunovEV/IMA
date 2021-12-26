@@ -14,6 +14,7 @@ class Orchestrator:
     def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, queue: mp.Queue):
         self.cfg = cfg
         self.mean_elo = MeanElo(cfg.players)
+        self.train = None
 
         agent = get_agent_module(cfg.algorithm)
         self.agents = [agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
@@ -39,42 +40,44 @@ class Orchestrator:
         self.logger.deinit()
 
     def set_mode(self, train: bool = True):
+        self.train = train
         self.logger.set_mode(train)
         self.mean_elo.reset()
         for agent in self.agents:
             agent.set_mode(train)
 
     def act(self, obs):
-        return self._make_act(obs, True)
+        return self._make_act(obs)
 
     def inference(self, obs, episode):
-        return self._make_act(obs, episode >= self.cfg.window)
+        # attention/transformer log when "episode >= self.cfg.window" ???
+        return self._make_act(obs)
 
     def rewarding(self, rewards, next_obs, last: bool):
-        for i, elo in enumerate(self.mean_elo.step(rewards)):
-            self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
-
         next_obs = self._preprocess(next_obs)
         for agent, reward in zip(self.agents, rewards):
             agent.rewarding(reward, next_obs, last)
 
-    def _make_act(self, obs, do_log):
+        if self.train:
+            for i, elo in enumerate(self.mean_elo.step(rewards)):
+                self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
+
+    def _make_act(self, obs):
         obs = self._preprocess(obs)
         logging_dict = {}
         actions = np.zeros((2, len(self.agents), len(self.agents)), dtype=np.int32)
         actions_key = self.cfg.actions_key
         for agent_id, agent in enumerate(self.agents):
-            output = agent.act(obs) if agent.train else agent.inference(obs)
+            output = agent.act(obs) if self.train else agent.inference(obs)
             actions[:, agent_id, indices_except(agent_id, self.agents)] = output.pop(actions_key, None)
             if len(output) > 0:
                 append_dict2dict(output, logging_dict)
         logging_dict[actions_key] = actions
 
-        if do_log:
-            self.logger.log(logging_dict)
-            if self.cfg.offend_policy_key in logging_dict and self.cfg.defend_policy_key in logging_dict:
-                self.logger.log({self.cfg.pvt_key: (logging_dict[self.cfg.offend_policy_key],
-                                                    logging_dict[self.cfg.defend_policy_key])})
+        self.logger.log(logging_dict)
+        if self.cfg.offend_policy_key in logging_dict and self.cfg.defend_policy_key in logging_dict:
+            self.logger.log({self.cfg.pvt_key: (logging_dict[self.cfg.offend_policy_key],
+                                                logging_dict[self.cfg.defend_policy_key])})
 
         return actions
 
