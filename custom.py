@@ -176,7 +176,9 @@ class AvgCoopsMetric(IArtifact, CooperationTask):
                         xticks=self.get_cooperation_relation(self.coops[0].shape[-1]) + 1,
                         xlabel='cooperation type')
 
-        self._draw_bars(ax[1], 'AVG_COOPS by epoch', np.sum(self.coops, axis=1) / self.cfg.repeats, xticks_step=1)
+        by_epoch = np.sum(self.coops, axis=1).reshape((-1, self.cfg.epochs))
+        by_epoch = np.mean(by_epoch, axis=0)
+        self._draw_bars(ax[1], 'AVG_COOPS by epoch', by_epoch, xticks_step=1)
 
         fig.tight_layout()
         fullname = f'{self.prepare_name()}.png'
