@@ -22,7 +22,7 @@ class Orchestrator:
         metrics = (
             ActionMap(cfg.actions_key, cfg.players, [agent.label for agent in self.agents], log_on_train=False),
             # PolicyViaTime(cfg.pvt_key, cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
-            CoopsMetric(cfg.actions_key, name, log_on_train=False, is_global=True)
+            CoopsMetric(cfg.actions_key, name, log_on_train=False)
         )
         for agent in self.agents:
             metrics += (BatchSumAvgMetric(f'{agent.label}_{cfg.reward_key}', 10),

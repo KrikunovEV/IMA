@@ -66,7 +66,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
 if __name__ == '__main__':
     configs = Config.init()
 
-    logger_server = LoggerServer()
+    logger_server = LoggerServer('lr=0.001')
     logger_server.start()
 
     cores = next(iter(configs.values())).cores
@@ -75,7 +75,8 @@ if __name__ == '__main__':
 
         for i, (name, config) in enumerate(configs.items()):
             run_logger = RunLogger(logger_server.queue, f'{name} (repeats={config.repeats})',
-                                   (AvgCoopsMetric(config.actions_key, config, log_on_train=False),), train=False)
+                                   (AvgCoopsMetric(config.actions_key, config, name, log_on_train=False, is_global=True),),
+                                   train=False)
 
             for repeat in range(config.repeats):
                 _name = f'{name} (r={repeat})' if config.repeats > 1 else name

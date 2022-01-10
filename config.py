@@ -8,16 +8,16 @@ class Config:
     # common
     players: int = 3
     epochs: int = 10
-    cores: int = 1
-    repeats: int = 10
+    cores: int = 2
+    repeats: int = 25
     seed: int = None
     algorithm: Union[str, tuple] = 'a2c_recurrent'
-    finite_episodes: Union[bool, tuple] = (True, False)
 
     # train
-    train_episodes: int = 100
+    train_episodes: int = 1000
     gamma: float = 0.99
     steps: int = 100  # TD update
+    finite_episodes: Union[bool, tuple] = True
 
     # exploration
     eps_high: float = 0.9
