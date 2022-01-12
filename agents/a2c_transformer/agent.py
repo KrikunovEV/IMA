@@ -1,6 +1,8 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as functional
+from collections import deque
+import numpy as np
 
 from .model import Core
 from config import Config
@@ -8,14 +10,17 @@ from logger import RunLogger
 from utils import to_one_hot
 
 
-# recurrent n-step TD A2C
+# transformer n-step TD A2C
 class Agent:
     def __init__(self, id: int, o_space: int, a_space: int, cfg: Config):
         self.id = id
         self.cfg = cfg
         self.label = f'{id + 1}'
         self.eps = cfg.eps_high
+        self.o_space = o_space
         self.step = 0
+        self.obs_history = deque(maxlen=cfg.window)
+        self._clear_history()
         # has to be set
         self.logger = None
         self.train = None
@@ -32,9 +37,12 @@ class Agent:
     def set_mode(self, train: bool):
         self.train = train
         self.model.train(train)
+        self._clear_history()
 
     def act(self, obs):
-        o_logits, d_logits, v = self.model(torch.from_numpy(obs).unsqueeze(0))
+        self.obs_history.append(obs)
+
+        o_logits, d_logits, v = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
         o_policy = functional.softmax(o_logits, dim=-1)
         d_policy = functional.softmax(d_logits, dim=-1)
 
@@ -63,7 +71,8 @@ class Agent:
                 self.cfg.defend_policy_key: d_policy.detach().cpu().numpy()}
 
     def inference(self, obs):
-        o_logits, d_logits, _ = self.model(torch.from_numpy(obs).unsqueeze(0))
+        self.obs_history.append(obs)
+        o_logits, d_logits, _ = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
         o_policy = functional.softmax(o_logits, dim=-1)
         d_policy = functional.softmax(d_logits, dim=-1)
         o_action = o_policy.multinomial(num_samples=1).item()
@@ -87,11 +96,16 @@ class Agent:
             self.model.reset()
             self.step = 0
 
+    def _clear_history(self):
+        for i in range(self.cfg.window):
+            self.obs_history.append(np.zeros(self.o_space, dtype=np.float32))
+
     def _learn(self, next_obs):
         g = 0.
         if not self.cfg.finite_episodes:
             with torch.no_grad():
-                _, _, g = self.model(torch.from_numpy(next_obs).unsqueeze(0))
+                self.obs_history.append(next_obs)
+                _, _, g = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
         policy_loss, value_loss = 0., 0.
 
         for i in reversed(range(len(self.rewards))):

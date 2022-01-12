@@ -8,10 +8,10 @@ class Config:
     # common
     players: int = 3
     epochs: int = 10
-    cores: int = 2
-    repeats: int = 25
+    cores: int = 1
+    repeats: int = 1
     seed: int = None
-    algorithm: Union[str, tuple] = 'a2c_recurrent'
+    algorithm: Union[str, tuple] = 'a2c_transformer'
 
     # train
     train_episodes: int = 1000
@@ -30,11 +30,10 @@ class Config:
     # test
     test_episodes: int = 100
 
-    # recurrent
+    # memory
     h_space: Union[int, tuple] = 32
     window: Union[int, tuple] = 16  # attention/transformer
-
-    # memory
+    dk: int = 64
     capacity: int = 5000
     no_learn_episodes: int = 100
 

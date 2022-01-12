@@ -47,22 +47,6 @@ class Orchestrator:
             agent.set_mode(train)
 
     def act(self, obs):
-        return self._make_act(obs)
-
-    def inference(self, obs, episode):
-        # attention/transformer log when "episode >= self.cfg.window" ???
-        return self._make_act(obs)
-
-    def rewarding(self, rewards, next_obs, last: bool):
-        next_obs = self._preprocess(next_obs)
-        for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, next_obs, last)
-
-        if self.train:
-            for i, elo in enumerate(self.mean_elo.step(rewards)):
-                self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
-
-    def _make_act(self, obs):
         obs = self._preprocess(obs)
         logging_dict = {}
         actions = np.zeros((2, len(self.agents), len(self.agents)), dtype=np.int32)
@@ -80,6 +64,15 @@ class Orchestrator:
                                                 logging_dict[self.cfg.defend_policy_key])})
 
         return actions
+
+    def rewarding(self, rewards, next_obs, last: bool):
+        next_obs = self._preprocess(next_obs)
+        for agent, reward in zip(self.agents, rewards):
+            agent.rewarding(reward, next_obs, last)
+
+        if self.train:
+            for i, elo in enumerate(self.mean_elo.step(rewards)):
+                self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
 
     def _preprocess(self, obs):
         obs = obs.flatten()

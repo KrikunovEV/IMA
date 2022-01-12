@@ -48,7 +48,7 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
         choices_eval_to_return.append([])
         with torch.no_grad():
             for episode in range(cfg.test_episodes):
-                choices = orchestrator.inference(obs, episode)
+                choices = orchestrator.act(obs)
                 choices_eval_to_return[-1].append(choices)
                 obs, rewards = env.step(choices)
                 orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
