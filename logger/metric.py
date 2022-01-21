@@ -116,7 +116,7 @@ class BatchMetric(IMetric):
         ))
 
         # mlflow constraint
-        if len(self._metrics) == MAX_ENTITIES_PER_BATCH:
+        if len(self._metrics) == MAX_ENTITIES_PER_BATCH - 1:
             self.on_all()
 
     def on_all(self):

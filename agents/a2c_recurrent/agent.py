@@ -51,7 +51,7 @@ class Agent:
         self.log_p.append(torch.log(prob))
         self.values.append(v)
 
-        self.logger.log({f'{self.label}_{self.cfg.eps_key}': self.eps})
+        # self.logger.log({f'{self.label}_{self.cfg.eps_key}': self.eps})
         if self.eps > self.cfg.eps_low:
             self.eps -= self.cfg.eps_decay
             if self.eps < self.cfg.eps_low:
@@ -103,10 +103,11 @@ class Agent:
 
         loss = policy_loss + value_loss
 
+        self.logger.log({f'{self.label}_{self.cfg.act_loss_key}': policy_loss.item()})
+        self.logger.log({f'{self.label}_{self.cfg.crt_loss_key}': value_loss.item()})
         self.optimizer.zero_grad()
         loss.backward(retain_graph=True)
         self.optimizer.step()
-        self.logger.log({f'{self.label}_{self.cfg.loss_key}': loss.item()})
 
         self.log_p = []
         self.values = []

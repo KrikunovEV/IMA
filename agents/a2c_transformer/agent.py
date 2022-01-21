@@ -20,7 +20,6 @@ class Agent:
         self.o_space = o_space
         self.step = 0
         self.obs_history = deque(maxlen=cfg.window)
-        self._clear_history()
         # has to be set
         self.logger = None
         self.train = None
@@ -37,12 +36,12 @@ class Agent:
     def set_mode(self, train: bool):
         self.train = train
         self.model.train(train)
-        self._clear_history()
+        self.obs_history.clear()
 
     def act(self, obs):
         self.obs_history.append(obs)
 
-        o_logits, d_logits, v = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
+        o_logits, d_logits, v = self.model(torch.tensor(np.array(self.obs_history), device=self.cfg.device))
         o_policy = functional.softmax(o_logits, dim=-1)
         d_policy = functional.softmax(d_logits, dim=-1)
 
@@ -72,7 +71,7 @@ class Agent:
 
     def inference(self, obs):
         self.obs_history.append(obs)
-        o_logits, d_logits, _ = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
+        o_logits, d_logits, _ = self.model(torch.tensor(np.array(self.obs_history), device=self.cfg.device))
         o_policy = functional.softmax(o_logits, dim=-1)
         d_policy = functional.softmax(d_logits, dim=-1)
         o_action = o_policy.multinomial(num_samples=1).item()
@@ -93,19 +92,15 @@ class Agent:
         if self.step == self.cfg.steps or last:
             if self.train:
                 self._learn(next_obs)
-            self.model.reset()
             self.step = 0
-
-    def _clear_history(self):
-        for i in range(self.cfg.window):
-            self.obs_history.append(np.zeros(self.o_space, dtype=np.float32))
 
     def _learn(self, next_obs):
         g = 0.
         if not self.cfg.finite_episodes:
             with torch.no_grad():
                 self.obs_history.append(next_obs)
-                _, _, g = self.model(torch.tensor(self.obs_history, device=self.cfg.device))
+                _, _, g = self.model(torch.tensor(np.array(self.obs_history), device=self.cfg.device))
+                self.obs_history.clear()
         policy_loss, value_loss = 0., 0.
 
         for i in reversed(range(len(self.rewards))):
@@ -115,12 +110,13 @@ class Agent:
             value_loss = value_loss + advantage.pow(2)
         value_loss = value_loss / 2
 
+        self.logger.log({f'{self.label}_{self.cfg.act_loss_key}': policy_loss.item()})
+        self.logger.log({f'{self.label}_{self.cfg.crt_loss_key}': value_loss.item()})
         loss = policy_loss + value_loss
 
         self.optimizer.zero_grad()
         loss.backward(retain_graph=True)
         self.optimizer.step()
-        self.logger.log({f'{self.label}_{self.cfg.loss_key}': loss.item()})
 
         self.log_p = []
         self.values = []

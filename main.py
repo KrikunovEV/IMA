@@ -14,13 +14,17 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug: bool = True):
     start_time = time.time()
 
-    seed = np.abs(name.__hash__()) % 4294967296  # 2**32
-    cfg.set('seed', seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    if debug:
-        print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
+    # for _ in range(10):
+    #     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
+    #     print(f'{name}: np = {np.random.randint(10)}, torch = {torch.randint(10, (1,))}')
+    # exit()
+    # seed = np.abs(name.__hash__()) % 4294967296  # 2**32
+    # cfg.set('seed', seed)
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # torch.cuda.manual_seed(seed)
+    # if debug:
+    #     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
 
     env = OADEnv(players=cfg.players, debug=False)
     orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
@@ -66,7 +70,10 @@ def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug:
 if __name__ == '__main__':
     configs = Config.init()
 
-    logger_server = LoggerServer('lr=0.001')
+    # for _ in range(10):
+    #     print(f'MAIN: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
+    #     print(f'MAIN: np = {np.random.randint(10)}, torch = {torch.randint(10, (1,))}')
+    logger_server = LoggerServer('transformer r25 with elo')
     logger_server.start()
 
     cores = next(iter(configs.values())).cores
@@ -75,7 +82,7 @@ if __name__ == '__main__':
 
         for i, (name, config) in enumerate(configs.items()):
             run_logger = RunLogger(logger_server.queue, f'{name} (repeats={config.repeats})',
-                                   (AvgCoopsMetric(config.actions_key, config, name, log_on_train=False, is_global=True),),
+                                   (AvgCoopsMetric(config.actions_key, config, name, log_on_train=False),),
                                    train=False)
 
             for repeat in range(config.repeats):

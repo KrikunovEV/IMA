@@ -22,13 +22,14 @@ class Orchestrator:
         metrics = (
             ActionMap(cfg.actions_key, cfg.players, [agent.label for agent in self.agents], log_on_train=False),
             # PolicyViaTime(cfg.pvt_key, cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
-            CoopsMetric(cfg.actions_key, name, log_on_train=False)
+            CoopsMetric(cfg.actions_key, name, log_on_train=False, is_global=True)
         )
         for agent in self.agents:
-            metrics += (BatchSumAvgMetric(f'{agent.label}_{cfg.reward_key}', 10),
-                        BatchAvgMetric(f'{agent.label}_{cfg.elo_key}', 10, log_on_train=False, epoch_counter=True),
-                        BatchAvgMetric(f'{agent.label}_{cfg.loss_key}', 10),
-                        # BatchAvgMetric(f'{agent.label}_{cfg.eps_key}', 10),
+            metrics += (BatchSumAvgMetric(f'{agent.label}_{cfg.reward_key}', cfg.avg),
+                        BatchAvgMetric(f'{agent.label}_{cfg.elo_key}', cfg.avg, log_on_train=False, epoch_counter=True),
+                        BatchAvgMetric(f'{agent.label}_{cfg.act_loss_key}', cfg.avg),
+                        BatchAvgMetric(f'{agent.label}_{cfg.crt_loss_key}', cfg.avg),
+                        # BatchAvgMetric(f'{agent.label}_{cfg.eps_key}', cfg.avg),
                         )
 
         self.logger = RunLogger(queue, name, metrics)
@@ -70,7 +71,7 @@ class Orchestrator:
         for agent, reward in zip(self.agents, rewards):
             agent.rewarding(reward, next_obs, last)
 
-        if self.train:
+        if not self.train:
             for i, elo in enumerate(self.mean_elo.step(rewards)):
                 self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
 

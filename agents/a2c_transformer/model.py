@@ -10,39 +10,54 @@ class Core(nn.Module):
     def __init__(self, o_space: int, a_space: int, cfg: Config):
         super(Core, self).__init__()
         self.cfg = cfg
+        self.dmodel = cfg.dmodel * 2 * cfg.players
 
-        var = 2. / (5. * cfg.window)
-        self.WQ = nn.Parameter(torch.normal(0, var, (o_space, cfg.dk), requires_grad=True))
-        self.WK = nn.Parameter(torch.normal(0, var, (o_space, cfg.dk), requires_grad=True))
-        self.WV = nn.Parameter(torch.normal(0, var, (o_space, cfg.dk), requires_grad=True))
-        self.WO = nn.Parameter(torch.normal(0, var, (cfg.dk, cfg.window), requires_grad=True))
-        # тут проверить, obs @ WQ
-        self.scale = torch.sqrt(torch.tensor(cfg.dk, device=cfg.device))
+        # Embeddings
+        self.o_embs = nn.Embedding(num_embeddings=cfg.players + 1, embedding_dim=cfg.dmodel)
+        self.d_embs = nn.Embedding(num_embeddings=cfg.players + 1, embedding_dim=cfg.dmodel)
+        self.emb_scale = torch.sqrt(torch.tensor(cfg.dmodel, device=cfg.device))
 
-        self.o_policy = nn.Linear(cfg.h_space, a_space)
-        self.d_policy = nn.Linear(cfg.h_space, a_space)
-        self.value = nn.Linear(cfg.h_space, 1)
+        # Positional encoding
+        i = 1. / torch.pow(10000., torch.arange(0, self.dmodel, 2, dtype=torch.float) / self.dmodel)
+        pos = torch.arange(cfg.window, dtype=torch.float).unsqueeze(1)
+        self.pe = torch.zeros((cfg.window, self.dmodel)).cuda()
+        self.pe[:, ::2] = torch.sin(pos * i)
+        self.pe[:, 1::2] = torch.cos(pos * i)
+
+        # SDPA head
+        var = 2. / (5. * self.dmodel)
+        self.WQ = nn.Parameter(torch.normal(0, var, (self.dmodel, cfg.dk), requires_grad=True))
+        self.WK = nn.Parameter(torch.normal(0, var, (self.dmodel, cfg.dk), requires_grad=True))
+        self.WV = nn.Parameter(torch.normal(0, var, (self.dmodel, cfg.dk), requires_grad=True))
+        self.WO = nn.Parameter(torch.normal(0, var, (cfg.dk, cfg.dk), requires_grad=True))
+        self.att_scale = torch.sqrt(torch.tensor(cfg.dk, device=cfg.device))
+        self.relu = nn.ReLU(inplace=True)
+
+        # Policies
+        self.o_policy = nn.Linear(cfg.dk, a_space)
+        self.d_policy = nn.Linear(cfg.dk, a_space)
+        self.value = nn.Linear(cfg.dk, 1)
 
     def forward(self, obs):
-        print(obs)
-        exit()
+        obs = obs.reshape(-1, self.cfg.players + 1)
+        obs = torch.cat(
+            (self.o_embs(torch.where(obs[::2] == 1)[1]),
+             self.d_embs(torch.where(obs[1::2] == 1)[1])),
+            dim=1).reshape(-1, self.dmodel) * self.emb_scale
+        obs = obs + self.pe[:obs.shape[0]]
 
-        # o_logits = self.o_policy(self.h).squeeze()
-        # d_logits = self.d_policy(self.h).squeeze()
-        # v = self.value(self.h.detach()).squeeze()
-        # return o_logits, d_logits, v
-        return None
+        q = torch.matmul(obs, self.WQ)
+        k = torch.matmul(obs, self.WK)
+        v = torch.matmul(obs, self.WV)
 
+        o = torch.matmul(q, k.T)
+        o = torch.div(o, self.att_scale)
+        o = functional.softmax(o, dim=-1)
+        o = torch.matmul(o, v)
+        o = torch.matmul(o, self.WO)
+        o = self.relu(o[-1])
 
-class Transformer(nn.Module):
-    def __init__(self, cfg: Config):
-        super(Attention, self).__init__()
-        self.cfg = cfg
-        self.scale = torch.sqrt(torch.Tensor([cfg.dk]).to(device=cfg.device))
-
-    def forward(self, my_q, q):
-        O = torch.matmul(q, my_q)
-        O = torch.div(O, self.scale)
-        O = functional.softmax(O, dim=-1)
-        O = torch.matmul(O, q)
-        return O
+        o_logits = self.o_policy(o)
+        d_logits = self.d_policy(o)
+        v = self.value(o)
+        return o_logits, d_logits, v

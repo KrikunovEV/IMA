@@ -9,39 +9,45 @@ class Config:
     players: int = 3
     epochs: int = 10
     cores: int = 1
-    repeats: int = 1
+    repeats: int = 25
     seed: int = None
     algorithm: Union[str, tuple] = 'a2c_transformer'
 
     # train
-    train_episodes: int = 1000
+    train_episodes: int = 50000
     gamma: float = 0.99
     steps: int = 100  # TD update
-    finite_episodes: Union[bool, tuple] = True
+    finite_episodes: Union[bool, tuple] = False
 
     # exploration
     eps_high: float = 0.9
     eps_low: float = 0.05
-    eps_episodes_ratio: float = 0.8
+    eps_episodes_ratio: float = 0.9
 
     # optimizer
-    lr: Union[float, tuple] = 0.001
+    lr: Union[float, tuple] = 0.0001
 
     # test
-    test_episodes: int = 100
+    test_episodes: int = 1000
 
     # memory
     h_space: Union[int, tuple] = 32
-    window: Union[int, tuple] = 16  # attention/transformer
+    window: Union[int, tuple] = 100  # attention/transformer
     dk: int = 64
+    dmodel: int = 32
     capacity: int = 5000
     no_learn_episodes: int = 100
+
+    # params for logging
+    avg: int = 25
 
     # keys for logging
     actions_key: str = 'acts'
     reward_key: str = 'reward'
     elo_key: str = 'elo'
     loss_key: str = 'loss'
+    act_loss_key: str = 'actor_loss'
+    crt_loss_key: str = 'critic_loss'
     eps_key: str = 'eps'
     offend_policy_key: str = 'offend_policy'
     defend_policy_key: str = 'defend_policy'
@@ -72,6 +78,12 @@ class Config:
             if self.steps < self.test_episodes:
                 raise Exception(f'{self.algorithm}: "steps" ({self.steps}) has to be equal '
                                 f'or higher than "test_episodes" ({self.test_episodes}) due to recurrence')
+
+        elif self.algorithm == 'a2c_transformer':
+            if self.window > self.train_episodes or self.window > self.test_episodes:
+                raise Exception(f'{self.algorithm}: "window" ({self.window}) has to be equal '
+                                f'or higher than "test_episodes" ({self.test_episodes}) and "train_episodes" '
+                                f'({self.train_episodes})')
 
     @staticmethod
     def init():

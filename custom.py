@@ -95,7 +95,7 @@ class CooperationTask:
         return self._cooperation_relation
 
     @staticmethod
-    def _draw_bars(ax, title, x, xticks=None, xticks_step=1, ylim=(-0.01, 100.01), xlabel='epoch', ylabel='# of coops'):
+    def _draw_bars(ax, title, x, xticks=None, xticks_step=1, ylim=(-0.01, 1000.01), xlabel='epoch', ylabel='# of coops'):
         num_x = np.arange(1, x.size + 1)
         ax.set_title(title)
         ax.set_xlabel(xlabel)
