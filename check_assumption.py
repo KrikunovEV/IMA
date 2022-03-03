@@ -9,13 +9,13 @@ c 0 2
 '''
 if __name__ == '__main__':
     # init = 'c'
-    # init = 'd'
-    init = 'cd'
+    init = 'd'
+    # init = 'cd'
 
     k = 2  # number of actions
     N = 2  # number of agents
-    steps = 1000  # number of episodes
-    repeats = 25
+    steps = 100000  # number of episodes
+    repeats = 10
     eps = 0.1  # e-greedy
     init_value = 0.0001
 
@@ -60,7 +60,8 @@ if __name__ == '__main__':
                 reward[:] = 2.
 
             for n, (a, r) in enumerate(zip(act, reward)):
-                Q[n, a] += (1 / Na[n, a]) * (r - Q[n, a])
+                # Q[n, a] += (1 / Na[n, a]) * (r - Q[n, a])
+                Q[n, a] += 0.01 * (r - Q[n, a])
                 rewards[n].append(r)
                 acts[n].append(a)
             Qs.append(Q.copy())

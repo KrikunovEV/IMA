@@ -65,7 +65,8 @@ if __name__ == '__main__':
                     reward[:] = 2.
 
                 for n, (a, r) in enumerate(zip(act, reward)):
-                    Q[n, a] += (1 / Na[n, a]) * (r - Q[n, a])
+                    # Q[n, a] += (1 / Na[n, a]) * (r - Q[n, a])
+                    Q[n, a] += 0.01 * (r - Q[n, a])
                     rewards[n].append(r)
                     acts[n].append(a)
                 Qs.append(Q.copy())
