@@ -1,79 +1,128 @@
 import numpy as np
 import multiprocessing as mp
 
+import torch
+
 from logger import RunLogger
-from custom import CoopsMetric, BatchSumAvgMetric, BatchAvgMetric, ActionMap, PolicyViaTime
+from custom import ActionMap, SumArtifact, EMAArtifact
 from config import Config
-from agents import get_agent_module
-from elo_systems import MeanElo
-from utils import indices_except, append_dict2dict
+# from elo_systems import MeanElo
+from agents import get_agent
 
 
 class Orchestrator:
 
     def __init__(self, o_space: int, a_space: int, cfg: Config, name: str, queue: mp.Queue):
         self.cfg = cfg
-        self.mean_elo = MeanElo(cfg.players)
+        # self.mean_elo = MeanElo(cfg.players)
         self.train = None
 
-        agent = get_agent_module(cfg.algorithm)
-        self.agents = [agent(id=i, o_space=o_space, a_space=a_space, cfg=cfg) for i in range(cfg.players)]
+        self.agents = [get_agent(cfg.agents[i], id=i, o_space=o_space, a_space=a_space, cfg=cfg)
+                       for i in range(cfg.players)]
+        self.eval_agents = [get_agent(cfg.eval_agents[i], id=i + cfg.players, o_space=o_space, a_space=a_space, cfg=cfg)
+                            for i in range(cfg.eval_players)]
+
+        is_ond = False
+        if 'rps' in cfg.environment:
+            labelsx = ['камень', 'бумага', 'ножницы']
+        elif 'ond' in cfg.environment:
+            labelsx = [agent.label for agent in self.agents]
+            is_ond = True
+        else:
+            labelsx = ['кооперация', 'состязание']
+        labelsy = [agent.label for agent in self.agents]
 
         metrics = (
-            ActionMap(cfg.actions_key, cfg.players, [agent.label for agent in self.agents], log_on_train=False),
-            # PolicyViaTime(cfg.pvt_key, cfg.players, [agent.label for agent in self.agents], log_on_eval=False),
-            CoopsMetric(cfg.actions_key, name, log_on_train=False, is_global=True)
+            ActionMap(cfg.actions_key, labelsy, labelsx, is_ond, log_on_train=False),
+            # # SumArtifact(cfg.reward_key, labelsy, name + '2', log_on_train=False, is_global=True),
+            # # SumArtifact(cfg.reward_key, labelsy, name, log_on_eval=False, is_global=True),
+            EMAArtifact(cfg.reward_key, labelsy, name, log_on_train=False, is_global=True),
+            EMAArtifact(cfg.reward_key, labelsy, log_on_eval=False)
         )
-        for agent in self.agents:
-            metrics += (BatchSumAvgMetric(f'{agent.label}_{cfg.reward_key}', cfg.avg),
-                        BatchAvgMetric(f'{agent.label}_{cfg.elo_key}', cfg.avg, log_on_train=False, epoch_counter=True),
-                        BatchAvgMetric(f'{agent.label}_{cfg.act_loss_key}', cfg.avg),
-                        BatchAvgMetric(f'{agent.label}_{cfg.crt_loss_key}', cfg.avg),
-                        # BatchAvgMetric(f'{agent.label}_{cfg.eps_key}', cfg.avg),
-                        )
+        for agent in self.agents + self.eval_agents:
+            metrics += agent.get_metrics()
 
         self.logger = RunLogger(queue, name, metrics)
         self.logger.param(cfg.as_dict())
-        for agent in self.agents:
+        for agent in self.agents + self.eval_agents:
             agent.set_logger(self.logger)
+
+        self._changed = [0]
+
+        self.messages = None
 
     def __del__(self):
         self.logger.deinit()
 
-    def set_mode(self, train: bool = True):
+    def reset(self, train: bool):
         self.train = train
         self.logger.set_mode(train)
-        self.mean_elo.reset()
         for agent in self.agents:
-            agent.set_mode(train)
+            agent.reset(train=train)
+        # self.mean_elo.reset()
+
+        if self.cfg.enable_eval_agents and not train:
+            for i in range(self.cfg.eval_players):
+                self.eval_agents[i].reset(train=True)
+                self.agents[i + 1] = self.eval_agents[i]
+
+    def negotiation(self):
+        self.messages = [agent.message for agent in self.agents if agent.negotiable]
+        for step in range(self.cfg.n_steps):
+            self.messages = [agent.negotiate(self.messages, step) for agent in self.agents if agent.negotiable]
 
     def act(self, obs):
         obs = self._preprocess(obs)
-        logging_dict = {}
-        actions = np.zeros((2, len(self.agents), len(self.agents)), dtype=np.int32)
-        actions_key = self.cfg.actions_key
-        for agent_id, agent in enumerate(self.agents):
-            output = agent.act(obs) if self.train else agent.inference(obs)
-            actions[:, agent_id, indices_except(agent_id, self.agents)] = output.pop(actions_key, None)
-            if len(output) > 0:
-                append_dict2dict(output, logging_dict)
-        logging_dict[actions_key] = actions
-
-        self.logger.log(logging_dict)
-        if self.cfg.offend_policy_key in logging_dict and self.cfg.defend_policy_key in logging_dict:
-            self.logger.log({self.cfg.pvt_key: (logging_dict[self.cfg.offend_policy_key],
-                                                logging_dict[self.cfg.defend_policy_key])})
-
+        if self.cfg.enable_negotiation:
+            actions = []
+            for i, agent in enumerate(self.agents):
+                if agent.negotiable:
+                    messages = []
+                    for j, message in enumerate(self.messages):
+                        messages.append(message)
+                        if i != j:
+                            messages[-1] = messages[-1].detach()
+                    actions.append(agent.act(obs, messages))
+                else:
+                    actions.append(agent.act(obs))
+        else:
+            actions = [agent.act(obs) for agent in self.agents]
+        self.logger.log({self.cfg.actions_key: actions})
         return actions
 
-    def rewarding(self, rewards, next_obs, last: bool):
+    def rewarding(self, rewards, next_obs, last):
         next_obs = self._preprocess(next_obs)
-        for agent, reward in zip(self.agents, rewards):
-            agent.rewarding(reward, next_obs, last)
+        result = False
+        for i, (agent, reward) in enumerate(zip(self.agents, rewards)):
+            if self.cfg.enable_negotiation:
+                if agent.negotiable:
+                    messages = []
+                    for j, message in enumerate(self.messages):
+                        messages.append(message)
+                        if i != j:
+                            messages[-1] = messages[-1].detach()
+                    res = agent.rewarding(reward, next_obs, last, messages)
+                else:
+                    res = agent.rewarding(reward, next_obs, last)
+            else:
+                res = agent.rewarding(reward, next_obs, last)
+            if not self.train and res is not None and res:
+                result = True
+
+        self.logger.log({self.cfg.reward_key: rewards})
 
         if not self.train:
-            for i, elo in enumerate(self.mean_elo.step(rewards)):
-                self.logger.log({f'{self.agents[i].label}_{self.cfg.elo_key}': elo})
+            self._changed[-1] += 1
+            if last:
+                self.logger.call('ema_plots', self._changed[:-1] if len(self._changed) > 1 else None)
+            if result or last:
+                self._changed.append(self._changed[-1])
+                self.logger.call('action_map')
+
+        # if not self.train:
+        #     elos = self.mean_elo.step(rewards)
+        #     for agent, elo in zip(self.agents, elos):
+        #         self.logger.log({agent.elo_key: elo})
 
     def _preprocess(self, obs):
         obs = obs.flatten()

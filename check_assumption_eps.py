@@ -9,13 +9,13 @@ c 0 2
 '''
 if __name__ == '__main__':
     # init = 'c'
-    init = 'd'
-    # init = 'cd'
+    # init = 'd'
+    init = 'cd'
 
     k = 2  # number of actions
     N = 2  # number of agents
     steps = 1000  # number of episodes
-    repeats = 100
+    repeats = 10
     init_value = 0.001
     epss = [0.1 * i for i in range(1, 10)]
 

@@ -1,107 +1,84 @@
 from orchestrator import Orchestrator
-from envs import OADEnv
+from envs import get_environment
 from config import Config
 from logger import LoggerServer, RunLogger
-from custom import AvgCoopsMetric
+from custom import AvgCoopsArtifact
+from tqdm import tqdm
 
 import time
 import numpy as np
 import torch
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def env_runner(name: str, cfg: Config, queue: mp.Queue, _to_return: dict, debug: bool = True):
+def env_runner(name: str, cfg: Config, queue: mp.Queue, seed: int = None, debug: bool = True):
     start_time = time.time()
 
-    # for _ in range(10):
-    #     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
-    #     print(f'{name}: np = {np.random.randint(10)}, torch = {torch.randint(10, (1,))}')
-    # exit()
-    # seed = np.abs(name.__hash__()) % 4294967296  # 2**32
-    # cfg.set('seed', seed)
-    # np.random.seed(seed)
-    # torch.manual_seed(seed)
-    # torch.cuda.manual_seed(seed)
-    # if debug:
-    #     print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
+    cfg.set('seed', seed)
+    if seed is not None:
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        if debug:
+            print(f'{name}: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
 
-    env = OADEnv(players=cfg.players, debug=False)
-    orchestrator = Orchestrator(o_space=np.prod(env.observation_space.n).item(),
-                                a_space=env.action_space.shape[0],
+    env = get_environment(env_module=cfg.environment, players=cfg.players, debug=False)
+    orchestrator = Orchestrator(o_space=env.observation_space,
+                                a_space=env.action_space,
                                 cfg=cfg, name=name, queue=queue)
 
-    choices_eval_to_return = []
-
+    actions = []
     for epoch in range(cfg.epochs):
 
         # TRAINING
-        orchestrator.set_mode(train=True)
         obs = env.reset()
-        for episode in range(cfg.train_episodes):
+        orchestrator.reset(train=True)
+        for e in tqdm(range(cfg.train_episodes), f'training {name}'):
+            if cfg.enable_negotiation:
+                orchestrator.negotiation()
             choices = orchestrator.act(obs)
             obs, rewards = env.step(choices)
-            orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.train_episodes)
+            orchestrator.rewarding(rewards, obs, e == cfg.train_episodes - 1)
         orchestrator.logger.all()
-        if debug:
-            print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
+        orchestrator.logger.call('all')
+        orchestrator.logger.call('ema_plots')
+        # if debug:
+        #     print(f'{name}: training {epoch + 1}/{cfg.epochs} done')
 
-        # EVALUATION
-        orchestrator.set_mode(train=False)
+        # TESTING
         obs = env.reset()
-        choices_eval_to_return.append([])
-        with torch.no_grad():
-            for episode in range(cfg.test_episodes):
-                choices = orchestrator.act(obs)
-                choices_eval_to_return[-1].append(choices)
-                obs, rewards = env.step(choices)
-                orchestrator.rewarding(rewards, obs, (episode + 1) == cfg.test_episodes)
-        orchestrator.logger.call('action_map')
+        orchestrator.reset(train=False)
+        for e in tqdm(range(cfg.test_episodes), f'testing {name}'):
+            if cfg.enable_negotiation:
+                orchestrator.negotiation()
+            choices = orchestrator.act(obs)
+            actions.append(choices)
+            obs, rewards = env.step(choices)
+            orchestrator.rewarding(rewards, obs, e == cfg.test_episodes - 1)
         orchestrator.logger.all()
-        if debug:
-            print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
+        orchestrator.logger.call('all')
+        orchestrator.logger.call('action_map')
+        # if debug:
+        #     print(f'{name}: evaluation {epoch + 1}/{cfg.epochs} done')
 
-    orchestrator.logger.call('policy_via_time')
-    orchestrator.logger.call('coop_bars')
     orchestrator.logger.param({'spent time': time.time() - start_time})
-    return {'to_return': _to_return, cfg.actions_key: choices_eval_to_return}
+    return actions
 
 
 if __name__ == '__main__':
     configs = Config.init()
 
-    # for _ in range(10):
-    #     print(f'MAIN: np seed = {np.random.get_state()[1][0]}, torch seed = {torch.get_rng_state()[0].item()}')
-    #     print(f'MAIN: np = {np.random.randint(10)}, torch = {torch.randint(10, (1,))}')
-    logger_server = LoggerServer('transformer r25 with elo')
+    logger_server = LoggerServer(Config.experiment_name)
     logger_server.start()
 
-    cores = next(iter(configs.values())).cores
-    with ProcessPoolExecutor(max_workers=cores) as executor:
-        runners = []
-
-        for i, (name, config) in enumerate(configs.items()):
-            run_logger = RunLogger(logger_server.queue, f'{name} (repeats={config.repeats})',
-                                   (AvgCoopsMetric(config.actions_key, config, name, log_on_train=False),),
-                                   train=False)
-
-            for repeat in range(config.repeats):
-                _name = f'{name} (r={repeat})' if config.repeats > 1 else name
-                to_return = {'run_logger': run_logger, 'last': (repeat + 1) == config.repeats, 'config': config}
-                runners.append(executor.submit(env_runner, _name, config, logger_server.queue, to_return))
-
-        for counter, runner in enumerate(as_completed(runners)):
-            try:
-                result = runner.result()
-                run_logger = result['to_return']['run_logger']
-                config = result['to_return']['config']
-                run_logger.log({config.actions_key: result[config.actions_key]})
-                if result['to_return']['last']:
-                    run_logger.call('avg_coop_bars')
-                    run_logger.deinit()
-            except Exception as ex:
-                raise ex
-
-            print(f'Games finished: {counter + 1}/{len(runners)}')
+    for i, (name, config) in enumerate(configs.items()):
+        # logger = RunLogger(logger_server.queue, 'avg', (AvgCoopsArtifact(config.actions_key, config, name),))
+        for repeat in range(config.repeats):
+            run_name = f'{name} (r={repeat})' if config.repeats > 1 else name
+            actions = env_runner(run_name, config, logger_server.queue)
+            # logger.log({config.actions_key: actions})
+        # logger.call('avg_coop_bars')
+        # logger.deinit()
+        print(f'Configs finished: {i + 1}/{len(configs)}')
 
     logger_server.stop()

@@ -6,62 +6,61 @@ import torch
 @dataclass(init=True, frozen=True)
 class Config:
     # common
-    players: int = 3
-    epochs: int = 10
-    cores: int = 1
-    repeats: int = 25
+    agents: list = field(default_factory=lambda: ['a2c_mod', 'a2c'])
+    environment: str = 'rps'
+    experiment_name: str = 'rps_1vs1'
+    epochs: int = 1
+    repeats: int = 1
     seed: int = None
-    algorithm: Union[str, tuple] = 'a2c_transformer'
 
     # train
     train_episodes: int = 50000
-    gamma: float = 0.99
-    steps: int = 100  # TD update
-    finite_episodes: Union[bool, tuple] = False
-
-    # exploration
-    eps_high: float = 0.9
-    eps_low: float = 0.05
-    eps_episodes_ratio: float = 0.9
-
-    # optimizer
-    lr: Union[float, tuple] = 0.0001
+    discount: float = 0.95
+    steps: int = 20  # TD update
+    h_space: Union[int, tuple] = 64
+    obs_capacity: int = 5
+    prob_thr: float = 0.00001
+    entropy: float = 0.01
+    e_greedy: float = 0.05
+    lr: Union[float, tuple] = 0.0025
+    grad_clip: float = 10.
+    # advanced
+    n_models: int = 3
+    ema_alpha: float = 0.0025
+    sd_capacity: int = 200
+    sd_thr: float = 0.006
+    ope_window: int = 100
+    do_ope_on_inference: bool = False
+    ope_reward_eps: float = 0.1
+    # negotiation
+    enable_negotiation: bool = False
+    m_space: int = 16
+    n_steps: int = 1
+    n_agents: int = 2
 
     # test
-    test_episodes: int = 1000
-
-    # memory
-    h_space: Union[int, tuple] = 32
-    window: Union[int, tuple] = 100  # attention/transformer
-    dk: int = 64
-    dmodel: int = 32
-    capacity: int = 5000
-    no_learn_episodes: int = 100
-
-    # params for logging
-    avg: int = 25
+    test_episodes: int = 10000
+    enable_eval_agents: bool = True
+    eval_agents: list = field(default_factory=lambda: ['a2c'])
 
     # keys for logging
-    actions_key: str = 'acts'
-    reward_key: str = 'reward'
-    elo_key: str = 'elo'
     loss_key: str = 'loss'
     act_loss_key: str = 'actor_loss'
     crt_loss_key: str = 'critic_loss'
-    eps_key: str = 'eps'
-    offend_policy_key: str = 'offend_policy'
-    defend_policy_key: str = 'defend_policy'
-    pvt_key: str = 'pvt'
+    actions_key: str = 'acts'
+    reward_key: str = 'reward'
+    elo_key: str = 'elo'
+    log_avg: int = 5
 
     # has to be post-initialized
     device: torch.device = field(init=False)
-    eps_decay: float = field(init=False)
+    players: int = field(init=False)
+    eval_players: int = field(init=False)
 
     def __post_init__(self):
         self.set('device', torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-        eps_decay = (self.eps_high - self.eps_low) / (self.epochs * self.train_episodes * self.eps_episodes_ratio)
-        self.set('eps_decay', eps_decay)
-
+        self.set('players', len(self.agents))
+        self.set('eval_players', len(self.eval_agents))
         self._check_conflicts()
 
     def set(self, param: str, value):
@@ -74,16 +73,12 @@ class Config:
         return asdict(self)
 
     def _check_conflicts(self):
-        if self.algorithm == 'a2c_recurrent':
-            if self.steps < self.test_episodes:
-                raise Exception(f'{self.algorithm}: "steps" ({self.steps}) has to be equal '
-                                f'or higher than "test_episodes" ({self.test_episodes}) due to recurrence')
-
-        elif self.algorithm == 'a2c_transformer':
-            if self.window > self.train_episodes or self.window > self.test_episodes:
-                raise Exception(f'{self.algorithm}: "window" ({self.window}) has to be equal '
-                                f'or higher than "test_episodes" ({self.test_episodes}) and "train_episodes" '
-                                f'({self.train_episodes})')
+        if len(self.agents) != self.players:
+            raise Exception(f'# of agents ({len(self.agents)}) must be same as # of players ({self.players})')
+        if self.ema_alpha < 0. or self.ema_alpha >= 1.:
+            raise Exception(f'ema_alpha {self.ema_alpha} must be in range [0; 1)')
+        if self.players < self.n_agents:
+            raise Exception(f'negotiation agents ({self.n_agents}) must be less or equal than players ({self.players})')
 
     @staticmethod
     def init():

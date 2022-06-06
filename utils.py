@@ -5,6 +5,10 @@ import scipy.special
 import math
 
 
+def magic_box(x):
+    return torch.exp(x - x.detach())
+
+
 def timer(func):
     def wrapper(*args, **kwargs):
         start = time.perf_counter()

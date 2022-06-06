@@ -4,10 +4,24 @@ import seaborn as sn
 import os
 import cv2 as cv
 from utils import greater_divisor
-from screeninfo import get_monitors
+# from screeninfo import get_monitors
 
-from logger import BatchMetric, IArtifact
+from logger import BatchMetric, IArtifact, Metric
 from config import Config
+
+
+class EMAMetric(Metric):
+    def __init__(self, key: str, ema: float, suffix: str = 'ema', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super(EMAMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
+        if ema < 0 or ema >= 1.:
+            raise Exception('ema value must be in range [0, 1)')
+        self.ema = ema
+        self.value = None
+
+    def on_log(self, value):
+        self.value = value if self.value is None else self.ema * value + (1 - self.ema) * self.value
+        super(EMAMetric, self).on_log(self.value)
 
 
 class BatchSumMetric(BatchMetric):
@@ -25,6 +39,20 @@ class BatchSumMetric(BatchMetric):
             self.sum_eval += value
             _sum = self.sum_eval
         super(BatchSumMetric, self).on_log(_sum)
+
+
+class AvgMetric(Metric):
+    def __init__(self, key: str, avg: int, suffix: str = 'avg', log_on_train: bool = True, log_on_eval: bool = True,
+                 epoch_counter: bool = True, is_global: bool = False):
+        super(AvgMetric, self).__init__(key, suffix, log_on_train, log_on_eval, epoch_counter, is_global)
+        self.values = []
+        self.avg = avg
+
+    def on_log(self, value):
+        self.values.append(value)
+        if len(self.values) == self.avg:
+            super(AvgMetric, self).on_log(np.mean(self.values))
+            self.values = []
 
 
 class BatchAvgMetric(BatchMetric):
@@ -83,69 +111,36 @@ class BatchSumAvgMetric(BatchMetric):
         super(BatchSumAvgMetric, self).on_all()
 
 
-class CooperationTask:
-    def __init__(self):
-        self._cooperation_relation = None
-
-    def get_cooperation_relation(self, shape):
-        if self._cooperation_relation is None:
-            indices = np.arange(shape)
-            self._cooperation_relation = np.array([(current, neighbor)
-                                                   for current in indices for neighbor in indices[current + 1:]])
-        return self._cooperation_relation
-
-    @staticmethod
-    def _draw_bars(ax, title, x, xticks=None, xticks_step=1, ylim=(-0.01, 1000.01), xlabel='epoch', ylabel='# of coops'):
-        num_x = np.arange(1, x.size + 1)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(ylim)
-        ax.bar(num_x, x)
-        ax.set_xticks(num_x[::xticks_step])
-        if xticks is not None:
-            ax.set_xticklabels(xticks)
-
-        # for j in range(len(num_x[::10])):
-        #     text = (num_x[::10])[j]
-        #     mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
-        #     ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
-
-        # for j in range(len(epochs[::10])):
-        #     text = (epochs[::10] + 1)[j]
-        #     mean_value = np.mean(np_coops[j * 20: (j + 1) * 20, i])
-        #     ax[i].text(text, mean_value, f'{mean_value}', fontsize=6, ha='center')
-
-
-class CoopsMetric(IArtifact, CooperationTask):
-    def __init__(self, key: str, suffix: str = 'coops', log_on_train: bool = True, log_on_eval: bool = True,
-                 log_in_dir: bool = False, is_global: bool = False):
+class AvgCoopsArtifact(IArtifact):
+    def __init__(self, key: str, cfg: Config, suffix: str = '', log_on_train: bool = True,
+                 log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
         IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
-        CooperationTask.__init__(self)
-        self.coops = []
+        self.coops = np.zeros(3)
+        self.labels = ['агенты 1 и 2', 'агенты 1 и 3', 'агенты 2 и 3']
+        self.cfg = cfg
+        self.fontsize = 20
 
-    def set_mode(self, train: bool):
-        super(CoopsMetric, self).set_mode(train)
-        if not train:
-            self.coops.append(0)
+    def on_log(self, game_actions):
+        for actions in game_actions:
+            if actions[0][0] == actions[1][0] and actions[0][1] == actions[1][1]:
+                self.coops[0] += 1
+            if actions[0][0] == actions[2][0] and actions[0][1] == actions[2][1]:
+                self.coops[1] += 1
+            if actions[1][0] == actions[2][0] and actions[1][1] == actions[2][1]:
+                self.coops[2] += 1
 
-    def on_log(self, actions):
-        self.coops[-1] = self.coops[-1] + \
-                         np.array([1 if np.array_equal(actions[:, current], actions[:, neighbor])
-                                   else 0
-                                   for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
+    def avg_coop_bars(self):
+        self.coops = self.coops / (self.cfg.repeats * self.cfg.test_episodes)
 
-    def coop_bars(self):
-        np_coops = np.array(self.coops)
-        gd = greater_divisor(np_coops.shape[-1])
-        fig_size = (gd, int(np_coops.shape[-1] / gd))
-        fig, ax = plt.subplots(fig_size[0], fig_size[1], figsize=(16, 9), sharey=True)
-        ax = ax.reshape(-1)
-        for i, (cur, nbr) in enumerate(self.get_cooperation_relation(np_coops.shape[-1]) + 1):
-            self._draw_bars(ax[i], f'{cur}&{nbr}', np_coops[:, i], xticks_step=1)
-        ax = ax.reshape(fig_size)
-
+        fig, ax = plt.subplots(figsize=(16, 9))
+        bar = ax.bar([0, 1, 2], self.coops, tick_label=self.labels)
+        ax.bar_label(bar, fmt='%.2f', size=self.fontsize)
+        ax.set_ylabel('количество коопераций', size=self.fontsize)
+        ax.tick_params(axis='both', which='minor', labelsize=self.fontsize)
+        ax.tick_params(axis='both', which='major', labelsize=self.fontsize)
+        ax.set_ylim(0, 1.05)
         fig.tight_layout()
+
         fullname = f'{self.prepare_name()}.png'
         plt.savefig(fullname)
         plt.close(fig)
@@ -153,34 +148,36 @@ class CoopsMetric(IArtifact, CooperationTask):
         os.remove(fullname)
 
 
-class AvgCoopsMetric(IArtifact, CooperationTask):
-    def __init__(self, key: str, cfg: Config, suffix: str = 'avg_coops', log_on_train: bool = True,
+class SumArtifact(IArtifact):
+    def __init__(self, key: str, players_labels: list, suffix: str = '', log_on_train: bool = True,
                  log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
-        IArtifact.__init__(self, key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
-        CooperationTask.__init__(self)
-        self.coops = []
-        self.cfg = cfg
+        super(SumArtifact, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
+        self.players = len(players_labels)
+        self.players_labels = players_labels
+        self.fontsize = 24
+        self.fontsize2 = 20
+        self.colors = ['r', 'g', 'b']
 
-    def on_log(self, game_actions):
-        for epoch_actions in game_actions:
-            self.coops.append(0)
-            for actions in epoch_actions:
-                self.coops[-1] = self.coops[-1] + \
-                                 np.array([1 if np.array_equal(actions[:, current], actions[:, neighbor])
-                                           else 0
-                                           for current, neighbor in self.get_cooperation_relation(actions.shape[-1])])
+        self.rewards = [[] for _ in range(self.players)]
 
-    def avg_coop_bars(self):
-        fig, ax = plt.subplots(1, 2, figsize=(16, 9), sharey=True)
-        self._draw_bars(ax[0], 'AVG_COOPS by type', np.mean(self.coops, axis=0),
-                        xticks=self.get_cooperation_relation(self.coops[0].shape[-1]) + 1,
-                        xlabel='cooperation type')
+    def on_log(self, rewards):
+        for metric, r in zip(self.rewards, rewards):
+            metric.append(r)
 
-        by_epoch = np.sum(self.coops, axis=1).reshape((-1, self.cfg.epochs))
-        by_epoch = np.mean(by_epoch, axis=0)
-        self._draw_bars(ax[1], 'AVG_COOPS by epoch', by_epoch, xticks_step=1)
+    def all(self):
+        if not self.is_able_to_log():
+            return
 
+        fig, ax = plt.subplots(figsize=(16, 9))
+        for rewards, label, color in zip(self.rewards, self.players_labels, self.colors):
+            ax.plot(np.cumsum(rewards), c=color, label=label, linewidth=3.)
+        ax.set_xlabel('эпизод', size=self.fontsize)
+        ax.set_ylabel('кумулятивная награда', size=self.fontsize)
+        ax.tick_params(axis='both', which='minor', labelsize=self.fontsize2)
+        ax.tick_params(axis='both', which='major', labelsize=self.fontsize2)
+        ax.legend(fontsize=self.fontsize)
         fig.tight_layout()
+
         fullname = f'{self.prepare_name()}.png'
         plt.savefig(fullname)
         plt.close(fig)
@@ -192,26 +189,51 @@ class ActionMap(IArtifact):
     OFFEND: int = 0
     DEFEND: int = 1
 
-    def __init__(self, key: str, players: int, labels: list, suffix: str = '', log_on_train: bool = True,
-                 log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
+    def __init__(self, key: str, players_labels: list, acts_labels: list, is_ond: bool, suffix: str = '',
+                 log_on_train: bool = True, log_on_eval: bool = True, log_in_dir: bool = False,
+                 is_global: bool = False):
         super(ActionMap, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
-        self.players = players
-        self.labels = labels
-        self.OM = np.zeros((players, players), dtype=np.int)
-        self.DM = np.zeros((players, players), dtype=np.int)
+        self.acts = len(acts_labels)
+        self.acts_labels = acts_labels
+        self.players = len(players_labels)
+        self.players_labels = players_labels
+        self.actions = np.zeros((self.players, self.acts), dtype=int)
+        self.actions2 = np.zeros((self.players, self.acts), dtype=int)
+        self.is_ond = is_ond
+        self.fontsize = 20
+        self.sn_fontscale = 2.75
 
     def on_log(self, actions):
-        self.OM += actions[self.OFFEND]
-        self.DM += actions[self.DEFEND]
+        for i in range(len(actions)):
+            if self.is_ond:
+                self.actions[i, actions[i][0]] += 1
+                self.actions2[i, actions[i][1]] += 1
+            else:
+                self.actions[i, actions[i]] += 1
 
     def action_map(self):
-        fig, ax = plt.subplots(1, 2, figsize=(16, 9))
-        ax[0].set_title('offends heatmap')
-        ax[1].set_title('defends heatmap')
-        sn.heatmap(self.OM, cmap='Reds', xticklabels=self.labels, yticklabels=self.labels,
-                   ax=ax[0], square=True, cbar=False, annot=True, fmt='d')
-        sn.heatmap(self.DM, cmap='Blues', xticklabels=self.labels, yticklabels=self.labels,
-                   ax=ax[1], square=True, cbar=False, annot=True, fmt='d')
+        if not self.is_able_to_log():
+            return
+
+        if self.is_ond:
+            fig, ax = plt.subplots(1, 2, figsize=(16, 9))
+            ax[0].set_title('Нападение', fontsize=self.fontsize)
+            ax[1].set_title('Защита', fontsize=self.fontsize)
+            sn.heatmap(self.actions, cmap='Reds', xticklabels=self.acts_labels, yticklabels=self.players_labels,
+                       ax=ax[0], square=True, cbar=False, annot=True, fmt='d', annot_kws={"size": self.fontsize})
+            sn.heatmap(self.actions2, cmap='Blues', xticklabels=self.acts_labels, yticklabels=self.players_labels,
+                       ax=ax[1], square=True, cbar=False, annot=True, fmt='d', annot_kws={"size": self.fontsize})
+            ax[0].tick_params(axis='both', which='minor', labelsize=self.fontsize)
+            ax[0].tick_params(axis='both', which='major', labelsize=self.fontsize)
+            ax[1].tick_params(axis='both', which='minor', labelsize=self.fontsize)
+            ax[1].tick_params(axis='both', which='major', labelsize=self.fontsize)
+        else:
+            fig, ax = plt.subplots(figsize=(16, 9))
+            sn.heatmap(self.actions, cmap='Reds', xticklabels=self.acts_labels, yticklabels=self.players_labels,
+                       ax=ax, square=True, cbar=False, annot=True, fmt='d', annot_kws={"size": self.fontsize})
+            ax.tick_params(axis='both', which='minor', labelsize=self.fontsize)
+            ax.tick_params(axis='both', which='major', labelsize=self.fontsize)
+
         fig.tight_layout()
 
         fullname = f'{self.prepare_name()}.png'
@@ -220,87 +242,85 @@ class ActionMap(IArtifact):
         self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
-        self.OM = np.zeros((self.players, self.players), dtype=np.int)
-        self.DM = np.zeros((self.players, self.players), dtype=np.int)
+        self.actions = np.zeros((self.players, self.acts), dtype=int)
+        self.actions2 = np.zeros((self.players, self.acts), dtype=int)
 
 
-class PolicyViaTime(IArtifact):
+class EMAArtifact(IArtifact):
+    def __init__(self, key: str, players_labels: list, suffix: str = '', log_on_train: bool = True,
+                 log_on_eval: bool = True, log_in_dir: bool = False, is_global: bool = False):
+        super(EMAArtifact, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
+        self.players = len(players_labels)
+        self.players_labels = players_labels
+        self.fontsize = 24
+        self.fontsize2 = 20
+        self.colors = ['r', 'g', 'b']
+        self.alpha = 0.01
 
-    def __init__(self, key: str, players: int, labels: list, frames_skip: int = 25, suffix: str = '',
-                 log_on_train: bool = True, log_on_eval: bool = True, log_in_dir: bool = False,
-                 is_global: bool = False):
-        super(PolicyViaTime, self).__init__(key, suffix, log_on_train, log_on_eval, log_in_dir, is_global)
-        self.players = players
-        self.labels = labels
-        self.ticks = [int(''.join(filter(lambda i: i.isdigit(), label))) for label in labels]
-        self.frames_skip = frames_skip
-        self.filenames = []
-        self.frame = 0
+        self.rewards = [[] for _ in range(self.players)]
 
-        self.resolution = None
-        for m in get_monitors():
-            if m.is_primary:
-                self.resolution = (m.width, m.height)
-                break
+    def on_log(self, rewards):
+        for metric, r in zip(self.rewards, rewards):
+            if len(metric) == 0:
+                metric.append(r)
+            else:
+                metric.append(self.alpha * r + (1 - self.alpha) * metric[-1])
 
-    def on_log(self, data):
-        self.frame += 1
-        if self.frame % self.frames_skip == 0:
-            offends, defends = data
-            fig, ax = plt.subplots(self.players, 2, figsize=(self.resolution[0] / 100., self.resolution[1] / 100.),
-                                   sharex=True, sharey=True)
-            for i, (label, offend, defend) in enumerate(zip(self.labels, offends, defends)):
-                ticks = self.ticks[:i] + self.ticks[i + 1:]
-                labels = self.labels[:i] + self.labels[i + 1:]
-                self._draw(ax[i][0], f'{label} agent offend', offend, ticks, labels)
-                self._draw(ax[i][1], f'{label} agent defend', defend, ticks, labels)
-            fig.tight_layout()
-            filename = os.path.join(self._tmp_dir, f'pvt_{len(self.filenames)}.png')
-            self.filenames.append(filename)
-            plt.savefig(filename)
-            plt.close(fig)
+    def ema_plots(self, changes=None):
+        if not self.is_able_to_log():
+            return
 
-    def _draw(self, ax, title, values, ticks, labels):
-        ax.set_title(title)
-        ax.set_ylim(-0.01, 1.01)
-        ax.set_xticks(ticks, labels)
-        ax.bar(ticks, values, color=['b' if i != np.argmax(values) else 'r' for i in range(len(values))])
+        fig, ax = plt.subplots(figsize=(16, 9))
+        for rewards, label, color in zip(self.rewards, self.players_labels, self.colors):
+            ax.plot(rewards, c=color, label=label, linewidth=3., zorder=1)
+        if changes is not None:
+            changes = np.array(changes)
+            rs = np.array(self.rewards[0])[changes]
+            ax.scatter(changes, rs, s=100, c='black', marker='o', label='changes', zorder=2)
+            for i, (x, y) in enumerate(zip(changes, rs)):
+                ax.text(x, y + 0.1, f'{i + 1}\n({int(x)})', c='black', size=16, zorder=3,
+                        ha='center', va='center', ma='center')
+        ax.set_ylim(-1., 1.)
+        ax.set_xlabel('эпизод', size=self.fontsize)
+        ax.set_ylabel('награда', size=self.fontsize)
+        ax.tick_params(axis='both', which='minor', labelsize=self.fontsize2)
+        ax.tick_params(axis='both', which='major', labelsize=self.fontsize2)
+        ax.legend(fontsize=self.fontsize)
+        fig.tight_layout()
 
-    def policy_via_time(self):
-        fullname = f'{self.prepare_name()}.avi'
-        writer = cv.VideoWriter(fullname, cv.VideoWriter_fourcc(*'DIVX'), 2, self.resolution)
-
-        for i, filename in enumerate(self.filenames):
-            writer.write(cv.imread(filename))
-            os.remove(filename)
-        writer.release()
-
+        fullname = f'{self.prepare_name()}.png'
+        plt.savefig(fullname)
+        plt.close(fig)
         self.logger.log_artifact(run_id=self._run_id, local_path=fullname, artifact_path=self.dest_dir)
         os.remove(fullname)
 
 
 if __name__ == '__main__':
 
-    x = np.linspace(0, 2 * np.pi, 400)
-    y = np.sin(x ** 2)
+    fig, ax = plt.subplots(figsize=(16, 9))
+    data = [np.arange(100) * np.random.rand() for _ in range(3)]
+    colors = ['r', 'g', 'b']
+    for rewards, label, color in zip(data, colors, colors):
+        ax.plot(rewards, c=color, label=label, linewidth=3., zorder=1)
+    ax.set_xlabel('эпизод', size=20)
+    ax.set_ylabel('награда', size=20)
+    ax.tick_params(axis='both', which='minor', labelsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.legend(fontsize=20)
+    fig.tight_layout()
+    plt.savefig('base_ema_reward_epoch1_step0.png')
+    plt.close(fig)
 
-    fig, axs = plt.subplots(5)
-    axs[0].plot(x, y)
-    axs[0].set_title('Axis [0, 0]')
-    axs[1].plot(x, y, 'tab:orange')
-    axs[1].set_title('Axis [0, 1]')
-    axs[2].plot(x, -y, 'tab:green')
-    axs[2].set_title('Axis [1, 0]')
-    #axs[1, 1].plot(x, -y, 'tab:red')
-    #axs[1, 1].set_title('Axis [1, 1]')
-
-    for ax in axs.flat:
-        ax.set(xlabel='x-label', ylabel='y-label')
-
-    # Hide x labels and tick labels for top plots and y ticks for right plots.
-    for ax in axs.flat:
-        ax.label_outer()
-
-    axs = axs.reshape(-1,2)
-
-    plt.show()
+    fig, ax = plt.subplots(figsize=(16, 9))
+    data = [np.arange(100) * np.random.rand() for _ in range(3)]
+    colors = ['r', 'g', 'b']
+    for rewards, label, color in zip(data, colors, colors):
+        ax.plot(rewards, c=color, label=label, linewidth=3., zorder=1)
+    ax.set_xlabel('эпизод', size=20)
+    ax.set_ylabel('награда', size=20)
+    ax.tick_params(axis='both', which='minor', labelsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.legend(fontsize=20)
+    fig.tight_layout()
+    plt.savefig('base2_ema_reward_epoch1_eval_step0.png')
+    plt.close(fig)

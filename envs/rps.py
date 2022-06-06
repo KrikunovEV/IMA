@@ -3,7 +3,7 @@ import numpy as np
 from typing import List
 
 
-class RPSEnv(gym.Env):
+class Env(gym.Env):
     ROCK: int = 0
     PAPER: int = 1
     SCISSORS: int = 2
@@ -16,13 +16,12 @@ class RPSEnv(gym.Env):
         self.debug = debug
 
         # gym specific
-        self.observation_space = gym.spaces.MultiBinary([players, 3 + 1])  # one-hot encoded vectors
-        self.action_space = gym.spaces.MultiDiscrete([3 for _ in range(players)])  # rock/paper/scissors
-        self.reward_range = (self.LOOSE_REWARD, self.WIN_REWARD)
+        self.observation_space = 4 * players  # one-hot encoded vectors
+        self.action_space = 3  # rock/paper/scissors
 
     def reset(self):
-        obs = np.zeros(self.observation_space.n, dtype=np.float32)
-        obs[:, self.observation_space.n[1] - 1] = 1.
+        obs = np.zeros((self.players, 4), dtype=np.float32)
+        obs[:, -1] = 1.
         return obs
 
     def step(self, action: List[int]):
@@ -74,12 +73,12 @@ class RPSEnv(gym.Env):
         else:
             self._print('Ничья')
 
-        obs = np.zeros(self.observation_space.n, dtype=np.float32)
+        obs = np.zeros((self.players, 4), dtype=np.float32)
         obs[np.arange(self.players), choices] = 1.
 
         self._print(f'Награды {rewards}')
 
-        return obs, rewards, False, dict()
+        return obs, rewards
 
     def render(self, mode="human"):
         pass

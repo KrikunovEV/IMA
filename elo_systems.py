@@ -13,7 +13,7 @@ class IZeroSumEloSystem:
         self.reset()
 
     def reset(self):
-        self.elo = np.full(self.players, self.INITIAL, dtype=np.int) + np.random.randint(10, size=self.players)
+        self.elo = np.full(self.players, self.INITIAL, dtype=int) + np.random.randint(10, size=self.players)
         return self.elo
 
     def step(self, rewards):
@@ -29,18 +29,25 @@ class IZeroSumEloSystem:
         scores[np.array(rewards) > 0.] = 1.
         estimates = scores - estimates
         # compute rating
-        self.elo = self.elo + (self.K * estimates).astype(np.int)
+        self.elo = self.elo + (self.K * estimates).astype(int)
 
 
 class MeanElo(IZeroSumEloSystem):
 
     def __init__(self, players: int):
         super(MeanElo, self).__init__(players)
+        self.warnings = 0
+        self.max_warnings = 5
 
     def step(self, rewards):
+        if np.sum(rewards) != 0:
+            self.warnings += 1
+            if self.warnings < self.max_warnings:
+                print(f'Elo system waiting for zero-sum rewards ({self.warnings + 1}/{self.max_warnings})')
+            rewards = np.zeros_like(rewards)
+
         # Use mean elo of other players to correct your elo
         estimates = ((np.sum(self.elo) - self.elo) / (self.players - 1)) - self.elo  # mean R other - R current
-
         self._update_elo(rewards, estimates)
         return self.elo
 
